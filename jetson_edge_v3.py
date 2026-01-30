@@ -2256,87 +2256,342 @@ async def raw_sensor_data_page():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Raw Sensor Data - 15-Min Aggregates</title>
+        <title>Raw Data | AquaSense</title>
         <meta http-equiv="refresh" content="60">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="UTF-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
-            body {{ font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #e3f2fd 0%, #f8f9ff 100%); min-height: 100vh; color: #2c3e50; margin: 0; padding: 20px; }}
-            .container {{ max-width: 1400px; margin: 0 auto; }}
-            .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }}
-            .logo {{ font-size: 1.3rem; font-weight: 700; color: #1976D2; }}
-            .nav-btn {{ padding: 8px 16px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(25, 118, 210, 0.2); border-radius: 15px; color: #1976D2; text-decoration: none; font-weight: 500; font-size: 0.85rem; transition: all 0.3s ease; }}
-            .nav-btn:hover, .nav-btn.active {{ background: #1976D2; color: white; }}
+            :root {{
+                --primary: #0077B6;
+                --primary-dark: #005f8a;
+                --primary-light: #E1F5FE;
+                --accent: #00B4D8;
+                --accent-light: #90E0EF;
+                --success: #10B981;
+                --success-light: #D1FAE5;
+                --warning: #F59E0B;
+                --warning-light: #FEF3C7;
+                --danger: #EF4444;
+                --danger-light: #FEE2E2;
+                --gray-50: #F9FAFB;
+                --gray-100: #F3F4F6;
+                --gray-200: #E5E7EB;
+                --gray-300: #D1D5DB;
+                --gray-400: #9CA3AF;
+                --gray-500: #6B7280;
+                --gray-600: #4B5563;
+                --gray-700: #374151;
+                --gray-800: #1F2937;
+                --gray-900: #111827;
+                --white: #FFFFFF;
+                --radius: 12px;
+                --radius-lg: 16px;
+                --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+                --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            }}
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                background: var(--gray-50);
+                min-height: 100vh;
+                color: var(--gray-800);
+                line-height: 1.5;
+            }}
+            .page-wrapper {{ display: flex; min-height: 100vh; }}
 
-            .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }}
-            .stat-card {{ background: white; border-radius: 15px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }}
-            .stat-value {{ font-size: 2rem; font-weight: 700; color: #1976D2; }}
-            .stat-label {{ font-size: 0.85rem; color: #666; margin-top: 5px; }}
+            /* Sidebar */
+            .sidebar {{
+                width: 220px;
+                background: var(--white);
+                border-right: 1px solid var(--gray-200);
+                padding: 20px 0;
+                position: fixed;
+                height: 100vh;
+                overflow-y: auto;
+                z-index: 100;
+            }}
+            .sidebar-logo {{
+                padding: 0 20px 20px;
+                border-bottom: 1px solid var(--gray-100);
+                margin-bottom: 16px;
+            }}
+            .logo-container {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            .logo-icon {{
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.3rem;
+            }}
+            .logo-text {{
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--primary);
+            }}
+            .logo-subtitle {{
+                font-size: 0.65rem;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .sidebar-nav {{ padding: 0 12px; }}
+            .nav-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 14px;
+                color: var(--gray-600);
+                text-decoration: none;
+                border-radius: var(--radius);
+                margin-bottom: 4px;
+                font-size: 0.875rem;
+                font-weight: 500;
+                transition: all 0.2s;
+            }}
+            .nav-item:hover {{ background: var(--gray-100); color: var(--gray-800); }}
+            .nav-item.active {{
+                background: var(--primary-light);
+                color: var(--primary);
+                font-weight: 600;
+            }}
+            .nav-icon {{ font-size: 1rem; width: 20px; text-align: center; }}
 
-            .data-table {{ width: 100%; background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }}
-            .data-table table {{ width: 100%; border-collapse: collapse; }}
-            .data-table th {{ background: #1976D2; color: white; padding: 12px 8px; text-align: left; font-size: 0.8rem; font-weight: 600; }}
-            .data-table td {{ padding: 10px 8px; border-bottom: 1px solid #eee; font-size: 0.85rem; }}
-            .data-table tr:hover {{ background: #f5f5f5; }}
-            .data-table tr:nth-child(even) {{ background: #fafafa; }}
+            /* Main Content */
+            .main-content {{
+                flex: 1;
+                margin-left: 220px;
+                padding: 20px 24px;
+            }}
 
-            .section-title {{ font-size: 1.2rem; font-weight: 600; color: #1976D2; margin-bottom: 15px; }}
-            .refresh-info {{ text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px; }}
+            /* Top Bar */
+            .top-bar {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                flex-wrap: wrap;
+                gap: 12px;
+            }}
+            .page-title {{
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: var(--gray-900);
+            }}
+            .datetime-display {{
+                text-align: right;
+            }}
+            .datetime-date {{ font-size: 0.85rem; font-weight: 600; color: var(--gray-800); }}
+            .datetime-time {{ font-size: 0.75rem; color: var(--gray-500); }}
+
+            /* Stats Grid */
+            .stats-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 16px;
+                margin-bottom: 24px;
+            }}
+            .stat-card {{
+                background: var(--white);
+                border-radius: var(--radius);
+                border: 1px solid var(--gray-200);
+                padding: 20px;
+                text-align: center;
+                transition: all 0.2s;
+            }}
+            .stat-card:hover {{
+                box-shadow: var(--shadow-md);
+                transform: translateY(-2px);
+            }}
+            .stat-icon {{
+                width: 40px;
+                height: 40px;
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 10px;
+                font-size: 1.2rem;
+            }}
+            .stat-value {{ font-size: 2rem; font-weight: 700; color: var(--primary); }}
+            .stat-label {{ font-size: 0.8rem; color: var(--gray-500); margin-top: 4px; }}
+
+            /* Section Header */
+            .section-header {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 16px;
+            }}
+            .section-icon {{
+                width: 32px;
+                height: 32px;
+                background: var(--primary-light);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1rem;
+            }}
+            .section-title {{ font-size: 1rem; font-weight: 600; color: var(--gray-800); }}
+
+            /* Data Table */
+            .data-table-wrapper {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                overflow: hidden;
+            }}
+            .data-table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            .data-table th {{
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                color: white;
+                padding: 14px 10px;
+                text-align: left;
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .data-table td {{
+                padding: 12px 10px;
+                border-bottom: 1px solid var(--gray-100);
+                font-size: 0.85rem;
+                color: var(--gray-700);
+            }}
+            .data-table tr:hover {{ background: var(--gray-50); }}
+            .data-table tr:nth-child(even) {{ background: var(--gray-50); }}
+            .data-table tr:nth-child(even):hover {{ background: var(--gray-100); }}
+
+            /* Refresh Info */
+            .refresh-info {{
+                text-align: center;
+                color: var(--gray-500);
+                font-size: 0.75rem;
+                margin-top: 16px;
+                padding: 12px;
+                background: var(--white);
+                border-radius: var(--radius);
+                border: 1px solid var(--gray-200);
+            }}
+
+            /* Responsive */
+            @media (max-width: 768px) {{
+                .sidebar {{ display: none; }}
+                .main-content {{ margin-left: 0; padding: 16px; }}
+                .stats-grid {{ grid-template-columns: repeat(2, 1fr); }}
+                .data-table {{ font-size: 0.75rem; }}
+                .data-table th, .data-table td {{ padding: 8px 6px; }}
+            }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <div class="logo">📊 Raw Sensor Data</div>
-                <div>
-                    <a href="/dashboard" class="nav-btn">Dashboard</a>
-                    <a href="/config" class="nav-btn">Settings</a>
-                    <a href="/raw-data" class="nav-btn active">Raw Data</a>
-                    <a href="/docs" class="nav-btn">API</a>
+        <div class="page-wrapper">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-logo">
+                    <div class="logo-container">
+                        <div class="logo-icon">💧</div>
+                        <div>
+                            <div class="logo-text">AquaSense</div>
+                            <div class="logo-subtitle">Smart Irrigation</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+                <nav class="sidebar-nav">
+                    <a href="/dashboard" class="nav-item">
+                        <span class="nav-icon">📊</span> Dashboard
+                    </a>
+                    <a href="/config" class="nav-item">
+                        <span class="nav-icon">⚙️</span> Settings
+                    </a>
+                    <a href="/raw-data" class="nav-item active">
+                        <span class="nav-icon">📈</span> Raw Data
+                    </a>
+                    <a href="/docs" class="nav-item">
+                        <span class="nav-icon">📄</span> API Docs
+                    </a>
+                </nav>
+            </aside>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value">{len(local_15min_records)}</div>
-                    <div class="stat-label">Total Records Stored</div>
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Top Bar -->
+                <div class="top-bar">
+                    <h1 class="page-title">Raw Sensor Data</h1>
+                    <div class="datetime-display">
+                        <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
+                        <div class="datetime-time">{datetime.now().strftime("%H:%M")} • Auto-refresh 60s</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value">{today_records}</div>
-                    <div class="stat-label">Today's Records ({today_records}/96 = {today_records/96*100:.0f}%)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{yesterday_records}</div>
-                    <div class="stat-label">Yesterday's Records ({yesterday_records}/96 = {yesterday_records/96*100:.0f}%)</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">100</div>
-                    <div class="stat-label">Max Capacity (deque)</div>
-                </div>
-            </div>
 
-            <div class="section-title">15-Minute Aggregate Records (Most Recent First)</div>
-            <div class="data-table">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Timestamp</th>
-                            <th>T_min (°C)</th>
-                            <th>T_max (°C)</th>
-                            <th>RH (%)</th>
-                            <th>Wind (m/s)</th>
-                            <th>Pressure (hPa)</th>
-                            <th>Sunshine (min)</th>
-                            <th>Rain (mm)</th>
-                            <th>VPD (kPa)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {table_rows}
-                    </tbody>
-                </table>
-            </div>
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--primary-light);">📦</div>
+                        <div class="stat-value">{len(local_15min_records)}</div>
+                        <div class="stat-label">Total Records</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--success-light);">📅</div>
+                        <div class="stat-value">{today_records}</div>
+                        <div class="stat-label">Today ({today_records/96*100:.0f}%)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--warning-light);">📆</div>
+                        <div class="stat-value">{yesterday_records}</div>
+                        <div class="stat-label">Yesterday ({yesterday_records/96*100:.0f}%)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: var(--gray-100);">💾</div>
+                        <div class="stat-value">100</div>
+                        <div class="stat-label">Max Capacity</div>
+                    </div>
+                </div>
 
-            <div class="refresh-info">Auto-refreshes every 60 seconds | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+                <!-- Data Table Section -->
+                <div class="section-header">
+                    <div class="section-icon">📊</div>
+                    <span class="section-title">15-Minute Aggregates from ESP32</span>
+                    <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Most recent first</span>
+                </div>
+                <div class="data-table-wrapper">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Timestamp</th>
+                                <th>T_min (°C)</th>
+                                <th>T_max (°C)</th>
+                                <th>RH (%)</th>
+                                <th>Wind (m/s)</th>
+                                <th>Pressure (hPa)</th>
+                                <th>Sunshine (min)</th>
+                                <th>Rain (mm)</th>
+                                <th>VPD (kPa)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {table_rows}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="refresh-info">
+                    🔄 Auto-refreshes every 60 seconds | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                </div>
+            </main>
         </div>
     </body>
     </html>
@@ -2633,267 +2888,853 @@ async def dashboard():
             if (document.getElementById('countdownTime')) {{ updateCountdown(); setInterval(updateCountdown, 1000); }}
             '''
 
+    # Prepare irrigation history for chart
+    irrigation_events = []
+    for event in list(irrigation_history)[-10:]:
+        event_time = event.get('timestamp', '')
+        if event_time:
+            try:
+                dt = datetime.fromisoformat(str(event_time).replace('Z', '').split('+')[0])
+                irrigation_events.append({
+                    'time': dt.strftime('%m/%d %H:%M'),
+                    'volume': event.get('irrigation_volume_l_per_tree', 0),
+                    'needed': event.get('irrigation_needed', False)
+                })
+            except:
+                pass
+
+    # Get daily ETo/ETc history from daily_prediction_result history (if available)
+    daily_history = {
+        'labels': [],
+        'eto': [],
+        'etc': [],
+        'rn': []
+    }
+    # For now, use current values as placeholder - in production, this would come from stored daily data
+    if daily_prediction_result.get("eto_prediction"):
+        daily_history['labels'].append(datetime.now().strftime('%m/%d'))
+        daily_history['eto'].append(round(daily_prediction_result["eto_prediction"].get("eto_mm_day", 0), 2))
+        daily_history['etc'].append(round(latest_irrigation.get("etc_mm_day", 0) if latest_irrigation else 0, 2))
+        daily_history['rn'].append(round(daily_prediction_result["eto_prediction"].get("estimated_rad", 0), 2))
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Smart Pump Dashboard v3</title>
+        <title>AquaSense | Smart Irrigation Dashboard</title>
         <meta http-equiv="refresh" content="30">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta charset="UTF-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
         <style>
+            :root {{
+                --primary: #0077B6;
+                --primary-dark: #005f8a;
+                --primary-light: #E1F5FE;
+                --accent: #00B4D8;
+                --accent-light: #90E0EF;
+                --success: #10B981;
+                --success-light: #D1FAE5;
+                --warning: #F59E0B;
+                --warning-light: #FEF3C7;
+                --danger: #EF4444;
+                --danger-light: #FEE2E2;
+                --gray-50: #F9FAFB;
+                --gray-100: #F3F4F6;
+                --gray-200: #E5E7EB;
+                --gray-300: #D1D5DB;
+                --gray-400: #9CA3AF;
+                --gray-500: #6B7280;
+                --gray-600: #4B5563;
+                --gray-700: #374151;
+                --gray-800: #1F2937;
+                --gray-900: #111827;
+                --white: #FFFFFF;
+                --radius: 12px;
+                --radius-lg: 16px;
+                --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+                --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+                --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            }}
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #e3f2fd 0%, #f8f9ff 100%); min-height: 100vh; color: #2c3e50; line-height: 1.6; }}
-            .status-bar {{ background: rgba(30, 30, 30, 0.9); color: white; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(10px); }}
-            .status-bar-left {{ display: flex; align-items: center; gap: 15px; }}
-            .status-bar-right {{ display: flex; align-items: center; gap: 15px; }}
-            .status-bar-date {{ font-weight: 500; }}
-            .status-bar-time {{ opacity: 0.8; }}
-            .status-bar-growth {{ display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 12px; }}
-            .status-bar-day {{ font-weight: 600; color: #4CAF50; }}
-            .status-bar-stage {{ opacity: 0.9; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-            .status-bar-kc {{ background: #4CAF50; padding: 2px 8px; border-radius: 8px; font-weight: 600; font-size: 0.7rem; }}
-            .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
-            .header {{ text-align: center; margin-bottom: 25px; padding: 20px; background: rgba(255, 255, 255, 0.9); border-radius: 20px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
-            .header h1 {{ font-size: 2rem; font-weight: 600; color: #1976D2; margin-bottom: 8px; }}
-            .header .subtitle {{ color: #666; font-size: 1rem; }}
-            .nav-bar {{ display: flex; justify-content: center; gap: 12px; margin-bottom: 25px; flex-wrap: wrap; }}
-            .nav-btn {{ padding: 8px 16px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(25, 118, 210, 0.2); border-radius: 15px; color: #1976D2; text-decoration: none; font-weight: 500; font-size: 0.85rem; transition: all 0.3s ease; }}
-            .nav-btn:hover, .nav-btn.active {{ background: #1976D2; color: white; transform: translateY(-1px); }}
-            .growth-stage-banner {{ display: none; }}
-            .vpd-banner {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 25px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 30px; flex-wrap: wrap; }}
-            .vpd-indicator {{ background: rgba(255,255,255,0.2); padding: 8px 20px; border-radius: 10px; text-align: center; display: flex; align-items: center; gap: 15px; }}
-            .vpd-value {{ font-size: 1.3rem; font-weight: 600; }}
-            .vpd-status {{ font-size: 0.8rem; opacity: 0.9; }}
-            .sensor-status-bar {{ background: rgba(255, 255, 255, 0.9); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; }}
-            .sensor-item {{ display: flex; align-items: center; font-size: 0.85rem; }}
-            .dashboard-main {{ display: grid; grid-template-columns: 350px 1fr; gap: 25px; margin-bottom: 30px; }}
-            .temp-main {{ background: linear-gradient(135deg, #42a5f5 0%, #1976d2 100%); color: white; border-radius: 25px; padding: 35px; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; min-height: 400px; }}
-            .temp-main::before {{ content: ''; position: absolute; top: -50%; right: -50%; width: 200px; height: 200px; background: rgba(255, 255, 255, 0.1); border-radius: 50%; }}
-            .location-info {{ position: relative; z-index: 2; }}
-            .location {{ font-size: 1.1rem; font-weight: 500; margin-bottom: 5px; opacity: 0.9; }}
-            .date-time {{ font-size: 0.9rem; opacity: 0.7; }}
-            .temp-display {{ position: relative; z-index: 2; text-align: center; margin: 20px 0; }}
-            .temp-current {{ font-size: 4.5rem; font-weight: 300; margin-bottom: 10px; }}
-            .temp-status {{ font-size: 1.2rem; opacity: 0.9; }}
-            .temp-range {{ display: flex; justify-content: space-between; position: relative; z-index: 2; margin-top: 20px; }}
-            .temp-range-item {{ text-align: center; }}
-            .temp-range-label {{ font-size: 0.8rem; opacity: 0.7; margin-bottom: 5px; }}
-            .temp-range-value {{ font-size: 1.1rem; font-weight: 600; }}
-            .weather-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px; margin-bottom: 25px; }}
-            .metric-card {{ background: rgba(255, 255, 255, 0.95); border-radius: 20px; padding: 20px; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); transition: transform 0.3s ease; position: relative; }}
-            .metric-card:hover {{ transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12); }}
-            .metric-header {{ display: flex; align-items: center; margin-bottom: 12px; }}
-            .metric-icon {{ width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 14px; font-weight: bold; color: white; }}
-            .humidity-icon {{ background: #42a5f5; }}
-            .wind-icon {{ background: #66bb6a; }}
-            .sun-icon {{ background: #ffa726; }}
-            .radiation-icon {{ background: #ef5350; }}
-            .rain-icon {{ background: #2196f3; }}
-            .pressure-icon {{ background: #9c27b0; }}
-            .vpd-icon {{ background: #ff5722; }}
-            .metric-title {{ font-size: 0.85rem; color: #666; font-weight: 500; }}
-            .metric-value {{ font-size: 1.8rem; font-weight: 600; color: #2c3e50; margin-bottom: 5px; }}
-            .metric-unit {{ font-size: 0.8rem; color: #999; margin-bottom: 10px; }}
-            .metric-bar {{ width: 100%; height: 5px; background: #f0f0f0; border-radius: 3px; overflow: hidden; }}
-            .metric-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.5s ease; }}
-            .humidity-bar {{ background: #42a5f5; }}
-            .wind-bar {{ background: #66bb6a; }}
-            .sun-bar {{ background: #ffa726; }}
-            .radiation-bar {{ background: #ef5350; }}
-            .rain-bar {{ background: #2196f3; }}
-            .pressure-bar {{ background: #9c27b0; }}
-            .vpd-bar {{ background: #ff5722; }}
-            .pump-section {{ background: {pump_status_color}; color: white; border-radius: 25px; padding: 30px; margin-bottom: 30px; text-align: center; position: relative; animation: {pump_animation}; }}
-            @keyframes pumpPulse {{ 0%, 100% {{ box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }} 50% {{ box-shadow: 0 0 0 15px rgba(76, 175, 80, 0); }} }}
-            @keyframes irrigationPulse {{ 0%, 100% {{ box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.4); }} 50% {{ box-shadow: 0 0 0 15px rgba(239, 83, 80, 0); }} }}
-            .unlimited-mode {{ border: 2px solid rgba(255, 255, 255, 0.5); animation: unlimitedPulse 2s ease-in-out infinite; }}
-            @keyframes unlimitedPulse {{ 0%, 100% {{ border-color: rgba(255, 255, 255, 0.5); }} 50% {{ border-color: rgba(255, 255, 255, 1); }} }}
-            .pump-status {{ font-size: 2rem; font-weight: 600; margin-bottom: 15px; }}
-            .pump-metrics {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-top: 20px; }}
-            .pump-metric {{ text-align: center; }}
-            .pump-metric-value {{ font-size: 2.5rem; font-weight: 600; margin-bottom: 5px; }}
-            .pump-metric-label {{ font-size: 1rem; opacity: 0.8; font-weight: 500; }}
-            .water-level-container {{ display: flex; flex-direction: column; align-items: center; background: rgba(255, 255, 255, 0.15); border-radius: 15px; padding: 15px; }}
-            .water-level-title {{ font-size: 1rem; font-weight: 600; margin-bottom: 10px; opacity: 0.8; }}
-            .battery-gauge {{ display: flex; align-items: flex-end; margin-bottom: 10px; }}
-            .battery-body {{ width: 50px; height: 80px; border: 3px solid rgba(255, 255, 255, 0.8); border-radius: 6px; position: relative; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin-right: 5px; }}
-            .battery-fill {{ position: absolute; bottom: 0; left: 0; right: 0; background: {water_fill_color}; transition: height 0.8s ease; border-radius: 3px 3px 0 0; height: {water_level_percent}%; }}
-            .battery-tip {{ width: 15px; height: 6px; background: rgba(255, 255, 255, 0.8); border-radius: 0 2px 2px 0; margin-bottom: 35px; }}
-            .water-level-labels {{ text-align: center; font-size: 0.85rem; opacity: 0.8; }}
-            .water-level-current {{ font-weight: 600; margin-bottom: 2px; }}
-            .water-level-threshold {{ font-size: 0.75rem; opacity: 0.7; }}
-            .countdown-timer {{ background: rgba(255, 255, 255, 0.15); border-radius: 15px; padding: 20px; margin-top: 20px; }}
-            .countdown-time {{ font-size: 2.5rem; font-weight: 700; margin-bottom: 5px; }}
-            .countdown-label {{ font-size: 0.9rem; opacity: 0.9; }}
-            .pump-controls {{ display: flex; justify-content: center; gap: 15px; margin-top: 20px; flex-wrap: wrap; }}
-            .pump-btn {{ padding: 12px 25px; font-size: 16px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; transition: all 0.3s ease; color: white; background: rgba(255, 255, 255, 0.2); border: 2px solid rgba(255, 255, 255, 0.3); }}
-            .pump-btn:hover {{ background: rgba(255, 255, 255, 0.3); transform: translateY(-2px); }}
-            .trends-section {{ margin-top: 30px; }}
-            .section-title {{ font-size: 1.3rem; font-weight: 600; color: #1976D2; margin-bottom: 20px; text-align: center; }}
-            .trends-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }}
-            .trend-card {{ background: rgba(255, 255, 255, 0.95); border-radius: 20px; padding: 25px; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); }}
-            .trend-header {{ display: flex; align-items: center; margin-bottom: 20px; }}
-            .trend-icon {{ width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 12px; font-weight: bold; color: white; }}
-            .trend-title {{ font-size: 1rem; font-weight: 600; color: #2c3e50; }}
-            .chart-container {{ position: relative; height: 200px; width: 100%; }}
-            @media (max-width: 1200px) {{ .dashboard-main {{ grid-template-columns: 1fr; }} .temp-main {{ min-height: 250px; }} }}
-            @media (max-width: 768px) {{ .container {{ padding: 15px; }} .weather-grid {{ grid-template-columns: repeat(2, 1fr); }} .pump-metrics {{ grid-template-columns: 1fr; gap: 20px; }} .trends-grid {{ grid-template-columns: 1fr; }} }}
+            body {{
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                background: var(--gray-50);
+                min-height: 100vh;
+                color: var(--gray-800);
+                line-height: 1.5;
+            }}
+            .page-wrapper {{ display: flex; min-height: 100vh; }}
+
+            /* Sidebar */
+            .sidebar {{
+                width: 220px;
+                background: var(--white);
+                border-right: 1px solid var(--gray-200);
+                padding: 20px 0;
+                position: fixed;
+                height: 100vh;
+                overflow-y: auto;
+                z-index: 100;
+            }}
+            .sidebar-logo {{
+                padding: 0 20px 20px;
+                border-bottom: 1px solid var(--gray-100);
+                margin-bottom: 16px;
+            }}
+            .logo-container {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            .logo-icon {{
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.3rem;
+            }}
+            .logo-text {{
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--primary);
+            }}
+            .logo-subtitle {{
+                font-size: 0.65rem;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .sidebar-nav {{ padding: 0 12px; }}
+            .nav-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 10px 14px;
+                color: var(--gray-600);
+                text-decoration: none;
+                border-radius: var(--radius);
+                margin-bottom: 4px;
+                font-size: 0.875rem;
+                font-weight: 500;
+                transition: all 0.2s;
+            }}
+            .nav-item:hover {{ background: var(--gray-100); color: var(--gray-800); }}
+            .nav-item.active {{
+                background: var(--primary-light);
+                color: var(--primary);
+                font-weight: 600;
+            }}
+            .nav-icon {{ font-size: 1rem; width: 20px; text-align: center; }}
+
+            /* Farm Info Card in Sidebar */
+            .farm-info {{
+                margin: 20px 12px;
+                padding: 14px;
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                border-radius: var(--radius);
+                color: var(--white);
+            }}
+            .farm-name {{ font-size: 0.9rem; font-weight: 600; margin-bottom: 8px; }}
+            .farm-stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+            .farm-stat {{ text-align: center; }}
+            .farm-stat-value {{ font-size: 1rem; font-weight: 700; }}
+            .farm-stat-label {{ font-size: 0.65rem; opacity: 0.85; }}
+
+            /* Main Content */
+            .main-content {{
+                flex: 1;
+                margin-left: 220px;
+                padding: 20px 24px;
+            }}
+
+            /* Top Bar */
+            .top-bar {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                flex-wrap: wrap;
+                gap: 12px;
+            }}
+            .page-title {{
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: var(--gray-900);
+            }}
+            .top-bar-right {{
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }}
+            .datetime-display {{
+                text-align: right;
+            }}
+            .datetime-date {{ font-size: 0.85rem; font-weight: 600; color: var(--gray-800); }}
+            .datetime-time {{ font-size: 0.75rem; color: var(--gray-500); }}
+
+            /* Growth Stage Pill */
+            .growth-pill {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--success-light);
+                padding: 6px 12px;
+                border-radius: 20px;
+                font-size: 0.75rem;
+            }}
+            .growth-day {{ font-weight: 700; color: var(--success); }}
+            .growth-kc {{ background: var(--success); color: white; padding: 2px 8px; border-radius: 10px; font-weight: 600; }}
+
+            /* Section Headers */
+            .section-header {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 16px;
+            }}
+            .section-icon {{
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1rem;
+            }}
+            .section-icon.blue {{ background: var(--primary-light); }}
+            .section-icon.green {{ background: var(--success-light); }}
+            .section-icon.orange {{ background: var(--warning-light); }}
+            .section-title {{ font-size: 1rem; font-weight: 600; color: var(--gray-800); }}
+
+            /* VPD + Pump Control Section */
+            .control-section {{
+                display: grid;
+                grid-template-columns: 1fr 2fr;
+                gap: 20px;
+                margin-bottom: 24px;
+            }}
+
+            /* VPD Card */
+            .vpd-card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                overflow: hidden;
+            }}
+            .vpd-header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 16px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .vpd-main-value {{ font-size: 2rem; font-weight: 700; }}
+            .vpd-unit {{ font-size: 0.9rem; opacity: 0.9; }}
+            .vpd-status-badge {{
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+            }}
+            .vpd-body {{ padding: 16px 20px; }}
+            .vpd-range {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 12px;
+            }}
+            .vpd-range-label {{ font-size: 0.8rem; color: var(--gray-500); }}
+            .vpd-range-value {{ font-size: 0.85rem; font-weight: 600; color: var(--gray-700); }}
+            .vpd-gauge {{
+                height: 8px;
+                background: var(--gray-200);
+                border-radius: 4px;
+                overflow: hidden;
+                position: relative;
+            }}
+            .vpd-gauge-fill {{
+                height: 100%;
+                border-radius: 4px;
+                transition: width 0.5s ease;
+            }}
+            .vpd-gauge-marker {{
+                position: absolute;
+                top: -3px;
+                width: 3px;
+                height: 14px;
+                background: var(--gray-800);
+                border-radius: 2px;
+            }}
+
+            /* Pump Control Card */
+            .pump-card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                overflow: hidden;
+            }}
+            .pump-header {{
+                padding: 16px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid var(--gray-100);
+            }}
+            .pump-status {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            .pump-status-dot {{
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                animation: pulse 2s infinite;
+            }}
+            .pump-status-dot.on {{ background: var(--success); }}
+            .pump-status-dot.off {{ background: var(--danger); }}
+            .pump-status-dot.needed {{ background: var(--warning); animation: blink 1s infinite; }}
+            @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
+            @keyframes blink {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} }}
+            .pump-status-text {{ font-weight: 600; font-size: 0.95rem; }}
+            .pump-status-text.on {{ color: var(--success); }}
+            .pump-status-text.off {{ color: var(--gray-600); }}
+            .pump-status-text.needed {{ color: var(--warning); }}
+
+            .pump-body {{ padding: 16px 20px; }}
+            .pump-metrics {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                margin-bottom: 16px;
+            }}
+            .pump-metric {{
+                text-align: center;
+                padding: 12px;
+                background: var(--gray-50);
+                border-radius: var(--radius);
+            }}
+            .pump-metric-value {{
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: var(--primary);
+            }}
+            .pump-metric-label {{
+                font-size: 0.7rem;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                margin-top: 2px;
+            }}
+
+            .pump-controls {{
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }}
+            .pump-btn {{
+                flex: 1;
+                min-width: 80px;
+                padding: 10px 16px;
+                border: none;
+                border-radius: var(--radius);
+                font-size: 0.8rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-family: inherit;
+            }}
+            .pump-btn-stop {{
+                background: var(--danger);
+                color: white;
+            }}
+            .pump-btn-stop:hover {{ background: #DC2626; }}
+            .pump-btn-start {{
+                background: var(--success);
+                color: white;
+            }}
+            .pump-btn-start:hover {{ background: #059669; }}
+            .pump-btn-timed {{
+                background: var(--primary);
+                color: white;
+            }}
+            .pump-btn-timed:hover {{ background: var(--primary-dark); }}
+
+            /* Water Level Gauge */
+            .water-gauge {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px;
+                background: var(--gray-50);
+                border-radius: var(--radius);
+            }}
+            .water-tank {{
+                width: 40px;
+                height: 60px;
+                border: 2px solid var(--gray-400);
+                border-radius: 4px;
+                position: relative;
+                overflow: hidden;
+                background: var(--gray-100);
+            }}
+            .water-fill {{
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                transition: height 0.8s ease;
+            }}
+            .water-info {{ flex: 1; }}
+            .water-percent {{ font-size: 1.2rem; font-weight: 700; }}
+            .water-detail {{ font-size: 0.75rem; color: var(--gray-500); }}
+
+            /* Countdown Timer */
+            .countdown {{
+                background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+                color: white;
+                padding: 16px;
+                border-radius: var(--radius);
+                text-align: center;
+                margin-top: 12px;
+            }}
+            .countdown-time {{ font-size: 2rem; font-weight: 700; }}
+            .countdown-label {{ font-size: 0.8rem; opacity: 0.9; }}
+
+            /* Sensor Status Section */
+            .sensors-section {{ margin-bottom: 24px; }}
+            .sensor-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px;
+            }}
+            .sensor-card {{
+                background: var(--white);
+                border-radius: var(--radius);
+                border: 1px solid var(--gray-200);
+                padding: 16px;
+                transition: all 0.2s;
+            }}
+            .sensor-card:hover {{
+                box-shadow: var(--shadow-md);
+                transform: translateY(-2px);
+            }}
+            .sensor-header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 10px;
+            }}
+            .sensor-icon {{
+                width: 36px;
+                height: 36px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1rem;
+            }}
+            .sensor-status {{
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+            }}
+            .sensor-status.online {{ background: var(--success); }}
+            .sensor-status.offline {{ background: var(--gray-400); }}
+            .sensor-name {{ font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px; }}
+            .sensor-value {{ font-size: 1.5rem; font-weight: 700; color: var(--gray-800); }}
+            .sensor-unit {{ font-size: 0.8rem; color: var(--gray-500); font-weight: 400; }}
+            .sensor-bar {{
+                height: 4px;
+                background: var(--gray-200);
+                border-radius: 2px;
+                margin-top: 10px;
+                overflow: hidden;
+            }}
+            .sensor-bar-fill {{
+                height: 100%;
+                border-radius: 2px;
+                transition: width 0.5s ease;
+            }}
+
+            /* Charts Section */
+            .charts-section {{ margin-bottom: 24px; }}
+            .charts-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 16px;
+            }}
+            .chart-card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                padding: 16px;
+            }}
+            .chart-header {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
+            }}
+            .chart-title {{ font-size: 0.9rem; font-weight: 600; color: var(--gray-700); }}
+            .chart-badge {{
+                font-size: 0.65rem;
+                padding: 2px 8px;
+                border-radius: 10px;
+                background: var(--gray-100);
+                color: var(--gray-600);
+            }}
+            .chart-container {{ height: 160px; }}
+
+            /* Daily Trends Section */
+            .daily-section {{ margin-bottom: 24px; }}
+            .daily-grid {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+            }}
+            .daily-card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                padding: 20px;
+                text-align: center;
+            }}
+            .daily-icon {{
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 12px;
+                font-size: 1.5rem;
+            }}
+            .daily-value {{ font-size: 2rem; font-weight: 700; margin-bottom: 4px; }}
+            .daily-label {{ font-size: 0.8rem; color: var(--gray-500); }}
+            .daily-chart {{ height: 80px; margin-top: 12px; }}
+
+            /* Irrigation History Section */
+            .irrigation-section {{ margin-bottom: 24px; }}
+            .irrigation-chart-card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                padding: 20px;
+            }}
+
+            /* Responsive */
+            @media (max-width: 1024px) {{
+                .control-section {{ grid-template-columns: 1fr; }}
+                .daily-grid {{ grid-template-columns: 1fr; }}
+            }}
+            @media (max-width: 768px) {{
+                .sidebar {{ display: none; }}
+                .main-content {{ margin-left: 0; padding: 16px; }}
+                .pump-metrics {{ grid-template-columns: 1fr; }}
+                .sensor-grid {{ grid-template-columns: repeat(2, 1fr); }}
+            }}
+            @media (max-width: 480px) {{
+                .sensor-grid {{ grid-template-columns: 1fr; }}
+            }}
         </style>
     </head>
     <body>
-        <div class="status-bar">
-            <div class="status-bar-left">
-                <span class="status-bar-date">{datetime.now().strftime("%a, %d %b %Y")}</span>
-                <span class="status-bar-time">{datetime.now().strftime("%H:%M")}</span>
-            </div>
-            <div class="status-bar-right">
-                <div class="status-bar-growth">
-                    <span class="status-bar-day">Day {current_day}</span>
-                    <span class="status-bar-stage">{current_stage[:25]}...</span>
-                    <span class="status-bar-kc">Kc {current_kc:.2f}</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="container">
-            <div class="header">
-                <h1>Smart Irrigation Control System v3</h1>
-                <div class="subtitle">Real-time monitoring with VPD checking & growth stage tracking</div>
-            </div>
-
-            <div class="nav-bar">
-                <a href="/dashboard" class="nav-btn active">Dashboard</a>
-                <a href="/config" class="nav-btn">Settings</a>
-                <a href="/raw-data" class="nav-btn">Raw Data</a>
-                <a href="/docs" class="nav-btn">API</a>
-            </div>
-
-            <div class="vpd-banner">
-                <div class="vpd-indicator" style="background:{vpd_status.get('color', '#999')}40;">
-                    <div>
-                        <div class="vpd-value">{current_vpd:.2f} kPa</div>
-                        <div class="vpd-status">VPD: {vpd_status.get('status', 'N/A').upper()}</div>
-                    </div>
-                    <div style="font-size:0.75rem;opacity:0.8;">Range: {vpd_range.get('min', 0)}-{vpd_range.get('max', 2)} kPa</div>
-                </div>
-            </div>
-
-            <div class="sensor-status-bar">
-                <div class="sensor-item">{sensor_indicator('temperature')}Temperature</div>
-                <div class="sensor-item">{sensor_indicator('humidity')}Humidity</div>
-                <div class="sensor-item">{sensor_indicator('pressure')}Pressure</div>
-                <div class="sensor-item">{sensor_indicator('wind')}Wind</div>
-                <div class="sensor-item">{sensor_indicator('solar')}Solar</div>
-                <div class="sensor-item">{sensor_indicator('rain')}Rain</div>
-                <div class="sensor-item">{sensor_indicator('vpd')}VPD</div>
-            </div>
-
-            <div class="dashboard-main">
-                <div class="temp-main">
-                    <div class="location-info">
-                        <div class="location" id="farmLocation">Detecting location...</div>
-                        <div class="date-time">{datetime.now().strftime("Today %d %B")}</div>
-                    </div>
-                    <div class="temp-display">
-                        <div class="temp-current">{current_temp_max:.0f}°C</div>
-                        <div class="temp-status">Current Temperature</div>
-                    </div>
-                    <div class="temp-range">
-                        <div class="temp-range-item"><div class="temp-range-label">Min</div><div class="temp-range-value">{current_temp_min:.0f}°C</div></div>
-                        <div class="temp-range-item"><div class="temp-range-label">Max</div><div class="temp-range-value">{current_temp_max:.0f}°C</div></div>
-                        <div class="temp-range-item"><div class="temp-range-label">Range</div><div class="temp-range-value">{current_temp_max - current_temp_min:.1f}°C</div></div>
-                    </div>
-                </div>
-
-                <div>
-                    <div class="weather-grid">
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon humidity-icon">H</div><div class="metric-title">Humidity</div></div>
-                            <div class="metric-value">{current_humidity:.0f}</div>
-                            <div class="metric-unit">% relative humidity</div>
-                            <div class="metric-bar"><div class="metric-bar-fill humidity-bar" style="width: {current_humidity}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon wind-icon">W</div><div class="metric-title">Wind Speed</div></div>
-                            <div class="metric-value">{current_wind:.2f}</div>
-                            <div class="metric-unit">m/s wind speed</div>
-                            <div class="metric-bar"><div class="metric-bar-fill wind-bar" style="width: {min(current_wind * 10, 100)}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon sun-icon">☀</div><div class="metric-title">Sunshine</div></div>
-                            <div class="metric-value">{current_sunshine:.2f}</div>
-                            <div class="metric-unit">hours of sunshine</div>
-                            <div class="metric-bar"><div class="metric-bar-fill sun-bar" style="width: {min(current_sunshine * 4.17, 100)}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon" style="background:#FF9800;">☼</div><div class="metric-title">Solar Radiation</div></div>
-                            <div class="metric-value">{current_solar_wm2:.0f}</div>
-                            <div class="metric-unit">W/m² (real-time)</div>
-                            <div class="metric-bar"><div class="metric-bar-fill" style="background:#FF9800; width: {min(current_solar_wm2 / 10, 100)}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon radiation-icon">Rn</div><div class="metric-title">Rn_est</div></div>
-                            <div class="metric-value">{current_rn_est:.2f}</div>
-                            <div class="metric-unit">MJ/m²/day (daily)</div>
-                            <div class="metric-bar"><div class="metric-bar-fill radiation-bar" style="width: {min(current_rn_est * 3.33, 100)}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon rain-icon">🌧</div><div class="metric-title">Rainfall</div></div>
-                            <div class="metric-value">{current_rainfall:.1f}</div>
-                            <div class="metric-unit">mm (15-min)</div>
-                            <div class="metric-bar"><div class="metric-bar-fill rain-bar" style="width: {min(current_rainfall * 2, 100)}%"></div></div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon pressure-icon">P</div><div class="metric-title">Pressure</div></div>
-                            <div class="metric-value">{current_pressure:.0f}</div>
-                            <div class="metric-unit">hPa</div>
-                            <div class="metric-bar"><div class="metric-bar-fill pressure-bar" style="width: {min((current_pressure-950)/100*100, 100) if current_pressure else 0}%"></div></div>
-                        </div>
-                        <div class="metric-card" style="border: 2px solid {vpd_status.get('color', '#999')};">
-                            <div class="metric-header"><div class="metric-icon vpd-icon">V</div><div class="metric-title">VPD</div></div>
-                            <div class="metric-value" style="color:{vpd_status.get('color', '#2c3e50')};">{current_vpd:.2f}</div>
-                            <div class="metric-unit">kPa ({vpd_status.get('status', 'N/A')})</div>
-                            <div class="metric-bar"><div class="metric-bar-fill vpd-bar" style="width: {min(current_vpd * 50, 100)}%"></div></div>
+        <div class="page-wrapper">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-logo">
+                    <div class="logo-container">
+                        <div class="logo-icon">💧</div>
+                        <div>
+                            <div class="logo-text">AquaSense</div>
+                            <div class="logo-subtitle">Smart Irrigation</div>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="pump-section">
-                <div class="pump-status">{pump_status_text}</div>
-                <div class="pump-metrics">
-                    <div class="pump-metric"><div class="pump-metric-value">{irrigation_volume:.1f}</div><div class="pump-metric-label">Liters per Tree</div></div>
-                    <div class="pump-metric"><div class="pump-metric-value">{irrigation_time_minutes:.0f}</div><div class="pump-metric-label">Running Time (min)</div></div>
-                    <div class="pump-metric water-level-container">
-                        <div class="water-level-title">Soil Water Status</div>
-                        <div class="battery-gauge"><div class="battery-body"><div class="battery-fill"></div></div><div class="battery-tip"></div></div>
-                        <div class="water-level-labels"><div class="water-level-current">{water_level_percent:.0f}% Available</div><div class="water-level-threshold">Deficit: {fmt(deficit_mm, '')} mm</div></div>
+                <nav class="sidebar-nav">
+                    <a href="/dashboard" class="nav-item active">
+                        <span class="nav-icon">📊</span> Dashboard
+                    </a>
+                    <a href="/config" class="nav-item">
+                        <span class="nav-icon">⚙️</span> Settings
+                    </a>
+                    <a href="/raw-data" class="nav-item">
+                        <span class="nav-icon">📈</span> Raw Data
+                    </a>
+                    <a href="/docs" class="nav-item">
+                        <span class="nav-icon">📄</span> API Docs
+                    </a>
+                </nav>
+                <div class="farm-info">
+                    <div class="farm-name">{irrigation_config.get('farm_name', 'My Farm')}</div>
+                    <div class="farm-stats">
+                        <div class="farm-stat">
+                            <div class="farm-stat-value">Day {current_day}</div>
+                            <div class="farm-stat-label">Growth</div>
+                        </div>
+                        <div class="farm-stat">
+                            <div class="farm-stat-value">{current_kc:.2f}</div>
+                            <div class="farm-stat-label">Kc Value</div>
+                        </div>
                     </div>
                 </div>
-                <div class="pump-controls">
-                    <button class="pump-btn" onclick="controlPump('close')">Stop Pump</button>
-                    <button class="pump-btn" onclick="controlPump('open', null)">Open Pump</button>
-                    <button class="pump-btn" onclick="controlPump('open', 3600)">Run 60min</button>
-                    <button class="pump-btn" onclick="controlPump('open', 7200)">Run 120min</button>
-                </div>
-                {countdown_section}
-            </div>
+            </aside>
 
-            <div class="trends-section">
-                <div class="section-title">Historical Trends</div>
-                <div class="trends-grid">
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon humidity-icon">H</div><div class="trend-title">Humidity (15-min)</div></div><div class="chart-container"><canvas id="humidityChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon wind-icon">W</div><div class="trend-title">Wind Speed (15-min)</div></div><div class="chart-container"><canvas id="windChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon sun-icon">☀</div><div class="trend-title">Sunshine (min)</div></div><div class="chart-container"><canvas id="sunshineChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#FF9800;">☼</div><div class="trend-title">Solar (W/m²)</div></div><div class="chart-container"><canvas id="radiationChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon rain-icon">🌧</div><div class="trend-title">Rainfall (mm)</div></div><div class="chart-container"><canvas id="rainfallChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#1976D2;">T</div><div class="trend-title">Temperature (°C)</div></div><div class="chart-container"><canvas id="temperatureChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon vpd-icon">V</div><div class="trend-title">VPD (kPa)</div></div><div class="chart-container"><canvas id="vpdChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#9c27b0;">P</div><div class="trend-title">Pressure (hPa)</div></div><div class="chart-container"><canvas id="pressureChart"></canvas></div></div>
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Top Bar -->
+                <div class="top-bar">
+                    <h1 class="page-title">Dashboard</h1>
+                    <div class="top-bar-right">
+                        <div class="growth-pill">
+                            <span class="growth-day">Day {current_day}</span>
+                            <span style="color: var(--gray-600);">{current_stage[:20]}...</span>
+                            <span class="growth-kc">Kc {current_kc:.2f}</span>
+                        </div>
+                        <div class="datetime-display">
+                            <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
+                            <div class="datetime-time">{datetime.now().strftime("%H:%M")} • Auto-refresh 30s</div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+                <!-- VPD + Pump Control Section -->
+                <div class="control-section">
+                    <!-- VPD Card -->
+                    <div class="vpd-card">
+                        <div class="vpd-header">
+                            <div>
+                                <div class="vpd-main-value">{current_vpd:.2f} <span class="vpd-unit">kPa</span></div>
+                                <div style="font-size: 0.8rem; opacity: 0.9;">Vapor Pressure Deficit</div>
+                            </div>
+                            <div class="vpd-status-badge" style="background: {vpd_status.get('color', '#999')};">{vpd_status.get('status', 'N/A').upper()}</div>
+                        </div>
+                        <div class="vpd-body">
+                            <div class="vpd-range">
+                                <span class="vpd-range-label">Optimal Range</span>
+                                <span class="vpd-range-value">{vpd_range.get('min', 0)} - {vpd_range.get('max', 2)} kPa</span>
+                            </div>
+                            <div class="vpd-gauge">
+                                <div class="vpd-gauge-fill" style="width: {min(current_vpd / 3 * 100, 100)}%; background: {vpd_status.get('color', '#999')};"></div>
+                            </div>
+                            <div style="margin-top: 12px; font-size: 0.8rem; color: var(--gray-600);">
+                                {'⚠️ Consider irrigation' if vpd_status.get('status') == 'high' else '✅ VPD within acceptable range' if vpd_status.get('status') in ['optimal', 'normal'] else '❄️ Low VPD detected'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pump Control Card -->
+                    <div class="pump-card">
+                        <div class="pump-header">
+                            <div class="pump-status">
+                                <div class="pump-status-dot {'on' if pump_is_effectively_on else 'needed' if irrigation_needed else 'off'}"></div>
+                                <span class="pump-status-text {'on' if pump_is_effectively_on else 'needed' if irrigation_needed else 'off'}">
+                                    {'PUMP RUNNING' if pump_is_effectively_on else 'IRRIGATION NEEDED' if irrigation_needed else 'PUMP OFF'}
+                                </span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--gray-500);">
+                                {irrigation_config.get('irrigation_type', 'Sprinkler')} System
+                            </div>
+                        </div>
+                        <div class="pump-body">
+                            <div class="pump-metrics">
+                                <div class="pump-metric">
+                                    <div class="pump-metric-value">{irrigation_volume:.1f}</div>
+                                    <div class="pump-metric-label">L/Tree</div>
+                                </div>
+                                <div class="pump-metric">
+                                    <div class="pump-metric-value">{irrigation_time_minutes:.0f}</div>
+                                    <div class="pump-metric-label">Minutes</div>
+                                </div>
+                                <div class="water-gauge">
+                                    <div class="water-tank">
+                                        <div class="water-fill" style="height: {water_level_percent}%; background: {water_fill_color};"></div>
+                                    </div>
+                                    <div class="water-info">
+                                        <div class="water-percent" style="color: {water_fill_color};">{water_level_percent:.0f}%</div>
+                                        <div class="water-detail">Soil Water</div>
+                                        <div class="water-detail">Deficit: {deficit_mm:.1f}mm</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="pump-controls">
+                                <button class="pump-btn pump-btn-stop" onclick="controlPump('close')">⏹ Stop</button>
+                                <button class="pump-btn pump-btn-start" onclick="controlPump('open', null)">▶ Start</button>
+                                <button class="pump-btn pump-btn-timed" onclick="controlPump('open', 3600)">60min</button>
+                                <button class="pump-btn pump-btn-timed" onclick="controlPump('open', 7200)">120min</button>
+                            </div>
+                            {f'<div class="countdown"><div class="countdown-time" id="countdownTime">--:--</div><div class="countdown-label">Time Remaining</div></div>' if pump_is_effectively_on else ''}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sensor Readings Section -->
+                <div class="sensors-section">
+                    <div class="section-header">
+                        <div class="section-icon blue">📡</div>
+                        <span class="section-title">Live Sensor Readings</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">15-min aggregates from ESP32</span>
+                    </div>
+                    <div class="sensor-grid">
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: var(--primary-light);">🌡️</div>
+                                <div class="sensor-status {'online' if sensor_status.get('temperature', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Temperature</div>
+                            <div class="sensor-value">{current_temp_max:.1f}<span class="sensor-unit">°C</span></div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);">Min: {current_temp_min:.1f}°C</div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_temp_max/50*100, 100)}%; background: var(--primary);"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #E3F2FD;">💧</div>
+                                <div class="sensor-status {'online' if sensor_status.get('humidity', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Humidity</div>
+                            <div class="sensor-value">{current_humidity:.0f}<span class="sensor-unit">%</span></div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {current_humidity}%; background: #42a5f5;"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #E8F5E9;">🌬️</div>
+                                <div class="sensor-status {'online' if sensor_status.get('wind', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Wind Speed</div>
+                            <div class="sensor-value">{current_wind:.2f}<span class="sensor-unit">m/s</span></div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_wind*10, 100)}%; background: #66bb6a;"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #FFF8E1;">☀️</div>
+                                <div class="sensor-status {'online' if sensor_status.get('solar', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Solar Radiation</div>
+                            <div class="sensor-value">{current_solar_wm2:.0f}<span class="sensor-unit">W/m²</span></div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_solar_wm2/10, 100)}%; background: #ffa726;"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #E1F5FE;">🌧️</div>
+                                <div class="sensor-status {'online' if sensor_status.get('rain', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Rainfall</div>
+                            <div class="sensor-value">{current_rainfall:.1f}<span class="sensor-unit">mm</span></div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_rainfall*5, 100)}%; background: #2196f3;"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #F3E5F5;">📊</div>
+                                <div class="sensor-status {'online' if sensor_status.get('pressure', {{}}).get('online') else 'offline'}"></div>
+                            </div>
+                            <div class="sensor-name">Pressure</div>
+                            <div class="sensor-value">{current_pressure:.0f}<span class="sensor-unit">hPa</span></div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min((current_pressure-950)/100*100, 100) if current_pressure else 0}%; background: #9c27b0;"></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily ET Values Section -->
+                <div class="daily-section">
+                    <div class="section-header">
+                        <div class="section-icon green">🌿</div>
+                        <span class="section-title">Daily Evapotranspiration</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Updated at 6:00 AM</span>
+                    </div>
+                    <div class="daily-grid">
+                        <div class="daily-card">
+                            <div class="daily-icon" style="background: var(--primary-light);">💨</div>
+                            <div class="daily-value" style="color: var(--primary);">{current_eto:.2f}</div>
+                            <div class="daily-label">ETo (mm/day)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Reference ET</div>
+                        </div>
+                        <div class="daily-card">
+                            <div class="daily-icon" style="background: var(--success-light);">🌱</div>
+                            <div class="daily-value" style="color: var(--success);">{current_etc:.2f}</div>
+                            <div class="daily-label">ETc (mm/day)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Crop ET (Kc × ETo)</div>
+                        </div>
+                        <div class="daily-card">
+                            <div class="daily-icon" style="background: var(--warning-light);">☀️</div>
+                            <div class="daily-value" style="color: var(--warning);">{current_rn_est:.2f}</div>
+                            <div class="daily-label">Rn_est (MJ/m²/day)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Net Radiation</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sensor Trends Section -->
+                <div class="charts-section">
+                    <div class="section-header">
+                        <div class="section-icon blue">📈</div>
+                        <span class="section-title">15-Minute Trends</span>
+                    </div>
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">🌡️ Temperature</span>
+                                <span class="chart-badge">°C</span>
+                            </div>
+                            <div class="chart-container"><canvas id="temperatureChart"></canvas></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">💧 Humidity</span>
+                                <span class="chart-badge">%</span>
+                            </div>
+                            <div class="chart-container"><canvas id="humidityChart"></canvas></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">🌬️ Wind Speed</span>
+                                <span class="chart-badge">m/s</span>
+                            </div>
+                            <div class="chart-container"><canvas id="windChart"></canvas></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">☀️ Solar Radiation</span>
+                                <span class="chart-badge">W/m²</span>
+                            </div>
+                            <div class="chart-container"><canvas id="radiationChart"></canvas></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">🌧️ Rainfall</span>
+                                <span class="chart-badge">mm</span>
+                            </div>
+                            <div class="chart-container"><canvas id="rainfallChart"></canvas></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">📊 Pressure</span>
+                                <span class="chart-badge">hPa</span>
+                            </div>
+                            <div class="chart-container"><canvas id="pressureChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Irrigation History Section -->
+                <div class="irrigation-section">
+                    <div class="section-header">
+                        <div class="section-icon orange">💦</div>
+                        <span class="section-title">Irrigation History</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Last 10 events</span>
+                    </div>
+                    <div class="irrigation-chart-card">
+                        <div class="chart-container" style="height: 200px;"><canvas id="irrigationHistoryChart"></canvas></div>
+                    </div>
+                </div>
+            </main>
         </div>
 
         <script>
@@ -2913,50 +3754,90 @@ async def dashboard():
                 }} catch (error) {{ alert('Connection error: ' + error.message); }}
             }}
 
-            function detectLocation() {{
-                const locElement = document.getElementById("farmLocation");
-                if (!locElement) return;
-                locElement.innerText = "Detecting location...";
-                if (!navigator.geolocation) {{ locElement.innerText = "Location unavailable"; return; }}
-                navigator.geolocation.getCurrentPosition((pos) => {{
-                    const lat = pos.coords.latitude.toFixed(6);
-                    const lon = pos.coords.longitude.toFixed(6);
-                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${{lat}}&lon=${{lon}}`)
-                        .then(res => res.json())
-                        .then(data => {{
-                            if (data && data.address) {{
-                                const addr = data.address;
-                                let locationText = "";
-                                if (addr.village) locationText += addr.village + ", ";
-                                else if (addr.town) locationText += addr.town + ", ";
-                                else if (addr.city) locationText += addr.city + ", ";
-                                if (addr.state) locationText += addr.state + ", ";
-                                if (addr.country) locationText += addr.country;
-                                locElement.innerText = locationText;
-                            }} else {{ locElement.innerText = "Location detected"; }}
-                        }}).catch(() => {{ locElement.innerText = "Location detected"; }});
-                }}, (err) => {{ locElement.innerText = "Location unavailable"; }}, {{ enableHighAccuracy: true, timeout: 7000 }});
-            }}
-            detectLocation();
-
             const chartConfig = {{
                 type: 'line',
                 options: {{
-                    responsive: true, maintainAspectRatio: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {{ legend: {{ display: false }} }},
-                    scales: {{ x: {{ display: true, ticks: {{ color: '#666', font: {{ size: 10 }} }}, grid: {{ color: 'rgba(0,0,0,0.1)' }} }}, y: {{ display: true, ticks: {{ color: '#666', font: {{ size: 10 }} }}, grid: {{ color: 'rgba(0,0,0,0.1)' }} }} }},
-                    elements: {{ point: {{ radius: 3, hoverRadius: 5 }}, line: {{ borderWidth: 2, tension: 0.4 }} }}
+                    scales: {{
+                        x: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }} }}, grid: {{ color: 'rgba(0,0,0,0.05)' }} }},
+                        y: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }} }}, grid: {{ color: 'rgba(0,0,0,0.05)' }} }}
+                    }},
+                    elements: {{ point: {{ radius: 2, hoverRadius: 4 }}, line: {{ borderWidth: 2, tension: 0.4 }} }}
                 }}
             }};
 
-            new Chart(document.getElementById('humidityChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['humidity']}, borderColor: '#42a5f5', backgroundColor: 'rgba(66, 165, 245, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('windChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['wind_speed']}, borderColor: '#66bb6a', backgroundColor: 'rgba(102, 187, 106, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('sunshineChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['sunshine_min']}, borderColor: '#ffa726', backgroundColor: 'rgba(255, 167, 38, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('radiationChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['solar_wm2']}, borderColor: '#ef5350', backgroundColor: 'rgba(239, 83, 80, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('rainfallChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['rainfall']}, borderColor: '#2196f3', backgroundColor: 'rgba(33, 150, 243, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('temperatureChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ label: 'Max', data: {history_data['temp_max']}, borderColor: '#ef5350', fill: false }}, {{ label: 'Min', data: {history_data['temp_min']}, borderColor: '#42a5f5', fill: false }}] }}, options: {{ ...chartConfig.options, plugins: {{ legend: {{ display: true }} }} }} }});
-            new Chart(document.getElementById('vpdChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['vpd']}, borderColor: '#ff5722', backgroundColor: 'rgba(255, 87, 34, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('pressureChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['pressure']}, borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', fill: true }}] }} }});
+            new Chart(document.getElementById('humidityChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['humidity']}, borderColor: '#0077B6', backgroundColor: 'rgba(0, 119, 182, 0.1)', fill: true }}] }}
+            }});
+            new Chart(document.getElementById('windChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['wind_speed']}, borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true }}] }}
+            }});
+            new Chart(document.getElementById('radiationChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['solar_wm2']}, borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.1)', fill: true }}] }}
+            }});
+            new Chart(document.getElementById('rainfallChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['rainfall']}, borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true }}] }}
+            }});
+            new Chart(document.getElementById('temperatureChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{
+                    labels: {history_data['labels']},
+                    datasets: [
+                        {{ label: 'Max', data: {history_data['temp_max']}, borderColor: '#EF4444', backgroundColor: 'transparent', fill: false }},
+                        {{ label: 'Min', data: {history_data['temp_min']}, borderColor: '#3B82F6', backgroundColor: 'transparent', fill: false }}
+                    ]
+                }},
+                options: {{ ...chartConfig.options, plugins: {{ legend: {{ display: true, labels: {{ boxWidth: 12, font: {{ size: 10 }} }} }} }} }}
+            }});
+            new Chart(document.getElementById('pressureChart').getContext('2d'), {{
+                ...chartConfig,
+                data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['pressure']}, borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.1)', fill: true }}] }}
+            }});
+
+            // Irrigation History Chart
+            const irrigationEvents = {json.dumps([e['time'] for e in irrigation_events])};
+            const irrigationVolumes = {json.dumps([e['volume'] for e in irrigation_events])};
+            const irrigationNeeded = {json.dumps([e['needed'] for e in irrigation_events])};
+
+            new Chart(document.getElementById('irrigationHistoryChart').getContext('2d'), {{
+                type: 'bar',
+                data: {{
+                    labels: irrigationEvents,
+                    datasets: [{{
+                        label: 'Irrigation Volume (L/Tree)',
+                        data: irrigationVolumes,
+                        backgroundColor: irrigationNeeded.map(n => n ? 'rgba(239, 68, 68, 0.7)' : 'rgba(16, 185, 129, 0.7)'),
+                        borderColor: irrigationNeeded.map(n => n ? '#EF4444' : '#10B981'),
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{
+                        legend: {{ display: false }},
+                        tooltip: {{
+                            callbacks: {{
+                                label: function(context) {{
+                                    const needed = irrigationNeeded[context.dataIndex];
+                                    return `${{context.parsed.y.toFixed(1)}} L/Tree (${{needed ? 'Needed' : 'Adequate'}})`;
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }}, maxRotation: 45 }}, grid: {{ display: false }} }},
+                        y: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }} }}, grid: {{ color: 'rgba(0,0,0,0.05)' }}, title: {{ display: true, text: 'L/Tree', font: {{ size: 10 }}, color: '#9CA3AF' }} }}
+                    }}
+                }}
+            }});
         </script>
     </body>
     </html>
@@ -3042,15 +3923,32 @@ async def configuration_page():
                 border-bottom: 1px solid var(--gray-100);
                 margin-bottom: 16px;
             }}
-            .sidebar-logo h2 {{
-                color: var(--netafim-green);
-                font-size: 1.25rem;
-                font-weight: 700;
+            .logo-container {{
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 10px;
             }}
-            .sidebar-logo span {{ font-size: 1.5rem; }}
+            .logo-icon {{
+                width: 36px;
+                height: 36px;
+                background: linear-gradient(135deg, var(--netafim-green) 0%, var(--netafim-green-dark) 100%);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.2rem;
+            }}
+            .logo-text {{
+                font-size: 1.15rem;
+                font-weight: 700;
+                color: var(--netafim-green);
+            }}
+            .logo-subtitle {{
+                font-size: 0.6rem;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
             .sidebar-nav {{ padding: 0 12px; }}
             .nav-item {{
                 display: flex;
@@ -3226,17 +4124,17 @@ async def configuration_page():
                 background: var(--gray-50);
                 border: 1px solid var(--gray-200);
                 border-radius: var(--radius);
-                padding: 12px;
+                padding: 14px;
                 text-align: center;
             }}
             .metric-value {{
-                font-size: 1.5rem;
+                font-size: 1.75rem;
                 font-weight: 700;
                 color: var(--netafim-green);
                 line-height: 1.2;
             }}
             .metric-value.blue {{ color: var(--water-blue); }}
-            .metric-value.yellow {{ color: var(--sun-yellow); }}
+            .metric-value.yellow {{ color: #D97706; }}  /* Darker amber for better visibility */
             .metric-label {{
                 font-size: 0.7rem;
                 color: var(--gray-500);
@@ -3344,7 +4242,13 @@ async def configuration_page():
             <!-- Sidebar Navigation -->
             <aside class="sidebar">
                 <div class="sidebar-logo">
-                    <h2><span>🌿</span> SmartIrrig</h2>
+                    <div class="logo-container">
+                        <div class="logo-icon">🌿</div>
+                        <div>
+                            <div class="logo-text">AquaSense</div>
+                            <div class="logo-subtitle">Farm Settings</div>
+                        </div>
+                    </div>
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/dashboard" class="nav-item">
