@@ -231,10 +231,38 @@ def check_vpd_status(vpd: float, growth_stage: str) -> dict:
             }
 
 def update_sensor_status(sensor_name: str, value, online: bool = True):
-    """Update sensor status tracking"""
+    """Update sensor status tracking with smart validation"""
     if sensor_name in sensor_status:
+        # Smart online detection based on sensor type and value
+        is_online = online
+
+        if value is None:
+            is_online = False
+        elif sensor_name == "solar":
+            # Solar: 0 W/m² could be valid at night, but we mark offline if exactly 0
+            # In production, ESP32 should send sensor_health status
+            is_online = value is not None and value > 0
+        elif sensor_name == "temperature":
+            # Temperature: valid range -40 to 60°C
+            is_online = value is not None and -40 <= value <= 60
+        elif sensor_name == "humidity":
+            # Humidity: valid range 0-100%
+            is_online = value is not None and 0 <= value <= 100
+        elif sensor_name == "pressure":
+            # Pressure: valid range 800-1100 hPa
+            is_online = value is not None and 800 <= value <= 1100
+        elif sensor_name == "wind":
+            # Wind: valid range 0-50 m/s (0 is valid - calm)
+            is_online = value is not None and 0 <= value <= 50
+        elif sensor_name == "rain":
+            # Rain: valid range 0-500 mm (0 is valid - no rain)
+            is_online = value is not None and 0 <= value <= 500
+        elif sensor_name == "vpd":
+            # VPD: valid range 0-5 kPa
+            is_online = value is not None and 0 <= value <= 5
+
         sensor_status[sensor_name] = {
-            "online": online,
+            "online": is_online,
             "last_update": datetime.now().isoformat(),
             "value": value
         }
@@ -1906,6 +1934,18 @@ async def receive_15min_data(data: dict):
     - Stores data locally for daily aggregation
     - Updates dashboard/sensor status
     - Does NOT run ML prediction (that happens at 6:00 AM)
+
+    ESP32 can optionally send sensor_health dict with online status:
+    {
+        "sensor_health": {
+            "temperature": true,
+            "humidity": true,
+            "pressure": true,
+            "wind": true,
+            "solar": false,  // sensor error
+            "rain": true
+        }
+    }
     """
     try:
         # Extract data from ESP32 payload
@@ -1930,21 +1970,49 @@ async def receive_15min_data(data: dict):
         # Store locally
         local_15min_records.append(record)
 
-        # Update sensor status for dashboard
-        if record["temp_avg_15"]:
-            update_sensor_status("temperature", record["temp_avg_15"])
-        if record["rh_avg_15"]:
-            update_sensor_status("humidity", record["rh_avg_15"])
-        if record["pressure_avg_15"]:
-            update_sensor_status("pressure", record["pressure_avg_15"])
+        # Get optional sensor health status from ESP32
+        sensor_health = data.get("sensor_health", {})
+
+        # Update sensor status for dashboard with smart validation
+        # Temperature
+        temp_online = sensor_health.get("temperature", True) if sensor_health else True
+        if record["temp_avg_15"] is not None:
+            update_sensor_status("temperature", record["temp_avg_15"], temp_online)
+
+        # Humidity
+        humidity_online = sensor_health.get("humidity", True) if sensor_health else True
+        if record["rh_avg_15"] is not None:
+            update_sensor_status("humidity", record["rh_avg_15"], humidity_online)
+
+        # Pressure
+        pressure_online = sensor_health.get("pressure", True) if sensor_health else True
+        if record["pressure_avg_15"] is not None:
+            update_sensor_status("pressure", record["pressure_avg_15"], pressure_online)
+
+        # Wind
+        wind_online = sensor_health.get("wind", True) if sensor_health else True
         if record["wind_avg_15"] is not None:
-            update_sensor_status("wind", record["wind_avg_15"])
-        if record["solar_avg_15"] is not None:
-            update_sensor_status("solar", record["solar_avg_15"])
+            update_sensor_status("wind", record["wind_avg_15"], wind_online)
+
+        # Solar - special handling: 0 W/m² = offline unless ESP32 explicitly says online
+        solar_value = record["solar_avg_15"]
+        solar_online = sensor_health.get("solar", None)  # None means use smart detection
+        if solar_online is None:
+            # Smart detection: solar sensor is online only if value > 0
+            # At night, ESP32 should send sensor_health.solar = true to indicate sensor is working
+            solar_online = solar_value is not None and solar_value > 0
+        if solar_value is not None:
+            update_sensor_status("solar", solar_value, solar_online)
+
+        # Rain
+        rain_online = sensor_health.get("rain", True) if sensor_health else True
         if record["rain_mm_15"] is not None:
-            update_sensor_status("rain", record["rain_mm_15"])
-        if record["vpd_avg_15"]:
-            update_sensor_status("vpd", record["vpd_avg_15"])
+            update_sensor_status("rain", record["rain_mm_15"], rain_online)
+
+        # VPD (calculated, so online if temp and humidity are online)
+        vpd_online = temp_online and humidity_online
+        if record["vpd_avg_15"] is not None:
+            update_sensor_status("vpd", record["vpd_avg_15"], vpd_online)
 
         # Get local storage stats
         today = date.today()
@@ -1954,6 +2022,10 @@ async def receive_15min_data(data: dict):
                    f"T:{record['temp_min_15']}-{record['temp_max_15']}°C | "
                    f"RH:{record['rh_avg_15']}% | Rain:{record['rain_mm_15']}mm | "
                    f"Today: {today_records}/96 records")
+
+        # Build sensor status summary for response
+        sensors_online = sum(1 for s in sensor_status.values() if s.get("online", False))
+        sensors_total = len(sensor_status)
 
         return {
             "status": "success",
@@ -1970,6 +2042,11 @@ async def receive_15min_data(data: dict):
                 "total_records": len(local_15min_records),
                 "today_records": today_records,
                 "today_coverage_pct": round(today_records / 96 * 100, 1)
+            },
+            "sensor_status": {
+                "online_count": sensors_online,
+                "total_count": sensors_total,
+                "details": {name: s.get("online", False) for name, s in sensor_status.items()}
             },
             "next_daily_prediction": "6:00 AM"
         }
