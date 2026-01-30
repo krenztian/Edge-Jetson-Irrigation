@@ -1133,11 +1133,22 @@ def fmt(value, unit=""):
     return f"N/A{unit}"
 
 def get_current_rainfall():
-    """Get current rainfall from latest data"""
+    """Get current rainfall - from sensor_status (15-min data) or prediction_history"""
+    # First try sensor_status (updated by /receive-15min)
+    rain_from_sensor = sensor_status.get("rain", {}).get("value")
+    if rain_from_sensor is not None and rain_from_sensor > 0:
+        return rain_from_sensor
+
+    # Fallback to prediction_history
     if prediction_history:
         latest = prediction_history[-1]
         return latest.get("input_data", {}).get("rainfall_mm", 0)
     return 0
+
+def get_current_solar_radiation():
+    """Get current solar radiation from sensor_status (W/m²)"""
+    solar_val = sensor_status.get("solar", {}).get("value")
+    return solar_val if solar_val is not None else 0
 
 # =========================
 # Recovery Endpoints
@@ -2058,6 +2069,139 @@ async def get_irrigation_history():
     return list(irrigation_history)
 
 # =========================
+# Raw Sensor Data Page
+# =========================
+@app.get("/raw-data", response_class=HTMLResponse)
+async def raw_sensor_data_page():
+    """Display stored 15-minute aggregate records"""
+
+    # Get local 15-min records
+    records = list(local_15min_records)
+    records.reverse()  # Most recent first
+
+    # Build table rows
+    table_rows = ""
+    for i, record in enumerate(records[:50]):  # Show last 50 records
+        timestamp = record.get("timestamp", record.get("received_at", "N/A"))
+        if timestamp and len(timestamp) > 19:
+            timestamp = timestamp[:19]  # Trim to readable format
+
+        table_rows += f"""
+        <tr>
+            <td>{i+1}</td>
+            <td>{timestamp}</td>
+            <td>{record.get('temp_min_15', 'N/A')}</td>
+            <td>{record.get('temp_max_15', 'N/A')}</td>
+            <td>{record.get('rh_avg_15', 'N/A')}</td>
+            <td>{record.get('wind_avg_15', 'N/A')}</td>
+            <td>{record.get('pressure_avg_15', 'N/A')}</td>
+            <td>{record.get('sunshine_min_15', 'N/A')}</td>
+            <td>{record.get('rain_mm_15', 'N/A')}</td>
+            <td>{record.get('vpd_avg_15', 'N/A')}</td>
+        </tr>
+        """
+
+    if not table_rows:
+        table_rows = "<tr><td colspan='10' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
+
+    # Get storage stats
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    today_records = len(get_local_15min_records_for_date(today))
+    yesterday_records = len(get_local_15min_records_for_date(yesterday))
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Raw Sensor Data - 15-Min Aggregates</title>
+        <meta http-equiv="refresh" content="60">
+        <style>
+            body {{ font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #e3f2fd 0%, #f8f9ff 100%); min-height: 100vh; color: #2c3e50; margin: 0; padding: 20px; }}
+            .container {{ max-width: 1400px; margin: 0 auto; }}
+            .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }}
+            .logo {{ font-size: 1.3rem; font-weight: 700; color: #1976D2; }}
+            .nav-btn {{ padding: 8px 16px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(25, 118, 210, 0.2); border-radius: 15px; color: #1976D2; text-decoration: none; font-weight: 500; font-size: 0.85rem; transition: all 0.3s ease; }}
+            .nav-btn:hover, .nav-btn.active {{ background: #1976D2; color: white; }}
+
+            .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }}
+            .stat-card {{ background: white; border-radius: 15px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }}
+            .stat-value {{ font-size: 2rem; font-weight: 700; color: #1976D2; }}
+            .stat-label {{ font-size: 0.85rem; color: #666; margin-top: 5px; }}
+
+            .data-table {{ width: 100%; background: white; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }}
+            .data-table table {{ width: 100%; border-collapse: collapse; }}
+            .data-table th {{ background: #1976D2; color: white; padding: 12px 8px; text-align: left; font-size: 0.8rem; font-weight: 600; }}
+            .data-table td {{ padding: 10px 8px; border-bottom: 1px solid #eee; font-size: 0.85rem; }}
+            .data-table tr:hover {{ background: #f5f5f5; }}
+            .data-table tr:nth-child(even) {{ background: #fafafa; }}
+
+            .section-title {{ font-size: 1.2rem; font-weight: 600; color: #1976D2; margin-bottom: 15px; }}
+            .refresh-info {{ text-align: center; color: #666; font-size: 0.8rem; margin-top: 15px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">📊 Raw Sensor Data</div>
+                <div>
+                    <a href="/dashboard" class="nav-btn">Dashboard</a>
+                    <a href="/config" class="nav-btn">Settings</a>
+                    <a href="/raw-data" class="nav-btn active">Raw Data</a>
+                    <a href="/docs" class="nav-btn">API</a>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{len(local_15min_records)}</div>
+                    <div class="stat-label">Total Records Stored</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{today_records}</div>
+                    <div class="stat-label">Today's Records ({today_records}/96 = {today_records/96*100:.0f}%)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{yesterday_records}</div>
+                    <div class="stat-label">Yesterday's Records ({yesterday_records}/96 = {yesterday_records/96*100:.0f}%)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">100</div>
+                    <div class="stat-label">Max Capacity (deque)</div>
+                </div>
+            </div>
+
+            <div class="section-title">15-Minute Aggregate Records (Most Recent First)</div>
+            <div class="data-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Timestamp</th>
+                            <th>T_min (°C)</th>
+                            <th>T_max (°C)</th>
+                            <th>RH (%)</th>
+                            <th>Wind (m/s)</th>
+                            <th>Pressure (hPa)</th>
+                            <th>Sunshine (min)</th>
+                            <th>Rain (mm)</th>
+                            <th>VPD (kPa)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_rows}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="refresh-info">Auto-refreshes every 60 seconds | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+# =========================
 # Debug Endpoints
 # =========================
 @app.get("/debug/latest-data")
@@ -2200,6 +2344,12 @@ async def dashboard():
     current_vpd = latest_data.get("input_data", {}).get("vpd", 0) or 0
     if current_vpd == 0:
         current_vpd = sensor_status.get("vpd", {}).get("value") or 0
+
+    # Solar radiation from sensor (W/m²) - real-time from ESP32
+    current_solar_wm2 = get_current_solar_radiation()
+
+    # Rn_est from daily prediction (MJ/m²/day) - updated at 6:00 AM
+    current_rn_est = daily_prediction_result.get("eto_prediction", {}).get("estimated_rad", 0) if daily_prediction_result.get("eto_prediction") else current_rad
 
     irrigation_volume = latest_irrigation.get("irrigation_volume_l_per_tree", 0)
     irrigation_needed = latest_irrigation.get("irrigation_needed", False)
@@ -2447,7 +2597,7 @@ async def dashboard():
             <div class="nav-bar">
                 <a href="/dashboard" class="nav-btn active">Dashboard</a>
                 <a href="/config" class="nav-btn">Settings</a>
-                <a href="/irrigation/history" class="nav-btn">Raw_Data</a>
+                <a href="/raw-data" class="nav-btn">Raw Data</a>
                 <a href="/docs" class="nav-btn">API</a>
             </div>
 
@@ -2508,21 +2658,27 @@ async def dashboard():
                             <div class="metric-bar"><div class="metric-bar-fill wind-bar" style="width: {min(current_wind * 10, 100)}%"></div></div>
                         </div>
                         <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon sun-icon">S</div><div class="metric-title">Sunshine</div></div>
+                            <div class="metric-header"><div class="metric-icon sun-icon">☀</div><div class="metric-title">Sunshine</div></div>
                             <div class="metric-value">{current_sunshine:.2f}</div>
                             <div class="metric-unit">hours of sunshine</div>
                             <div class="metric-bar"><div class="metric-bar-fill sun-bar" style="width: {min(current_sunshine * 4.17, 100)}%"></div></div>
                         </div>
                         <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon radiation-icon">R</div><div class="metric-title">Solar Rad</div></div>
-                            <div class="metric-value">{current_rad:.1f}</div>
-                            <div class="metric-unit">MJ/m2/day</div>
-                            <div class="metric-bar"><div class="metric-bar-fill radiation-bar" style="width: {min(current_rad * 3.33, 100)}%"></div></div>
+                            <div class="metric-header"><div class="metric-icon" style="background:#FF9800;">☼</div><div class="metric-title">Solar Radiation</div></div>
+                            <div class="metric-value">{current_solar_wm2:.0f}</div>
+                            <div class="metric-unit">W/m² (real-time)</div>
+                            <div class="metric-bar"><div class="metric-bar-fill" style="background:#FF9800; width: {min(current_solar_wm2 / 10, 100)}%"></div></div>
                         </div>
                         <div class="metric-card">
-                            <div class="metric-header"><div class="metric-icon rain-icon">R</div><div class="metric-title">Rainfall</div></div>
+                            <div class="metric-header"><div class="metric-icon radiation-icon">Rn</div><div class="metric-title">Rn_est</div></div>
+                            <div class="metric-value">{current_rn_est:.2f}</div>
+                            <div class="metric-unit">MJ/m²/day (daily)</div>
+                            <div class="metric-bar"><div class="metric-bar-fill radiation-bar" style="width: {min(current_rn_est * 3.33, 100)}%"></div></div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-header"><div class="metric-icon rain-icon">🌧</div><div class="metric-title">Rainfall</div></div>
                             <div class="metric-value">{current_rainfall:.1f}</div>
-                            <div class="metric-unit">mm today</div>
+                            <div class="metric-unit">mm (15-min)</div>
                             <div class="metric-bar"><div class="metric-bar-fill rain-bar" style="width: {min(current_rainfall * 2, 100)}%"></div></div>
                         </div>
                         <div class="metric-card">
@@ -2708,7 +2864,7 @@ async def configuration_page():
             <div class="nav-bar">
                 <a href="/dashboard" class="nav-btn">Dashboard</a>
                 <a href="/config" class="nav-btn active">Settings</a>
-                <a href="/irrigation/history" class="nav-btn">History</a>
+                <a href="/raw-data" class="nav-btn">Raw Data</a>
                 <a href="/docs" class="nav-btn">API</a>
             </div>
 
@@ -2739,13 +2895,8 @@ async def configuration_page():
                     </div>
 
                     <div class="form-section">
-                        <h3>Growth Stage Configuration (Phase 2)</h3>
+                        <h3>Growth Stage Configuration</h3>
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="growth_day">Current Growth Day (1-365):</label>
-                                <input type="number" id="growth_day" value="{current_day}" min="1" max="365" required>
-                                <small style="color:#666;">Stage auto-updates based on day number</small>
-                            </div>
                             <div class="form-group">
                                 <label for="crop_type">Crop Type:</label>
                                 <select id="crop_type" required>
@@ -2753,6 +2904,27 @@ async def configuration_page():
                                     <option value="Durian" {is_selected('crop_type', 'Durian')}>Durian</option>
                                     <option value="Mangosteen" {is_selected('crop_type', 'Mangosteen')}>Mangosteen</option>
                                 </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="growth_stage">Growth Stage (with Kc values):</label>
+                                <select id="growth_stage" onchange="updateDayRange()">
+                                    <option value="1-45" data-min="1" data-max="45" data-kc="0.5" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & fruit setting (Days 1-45) - Kc: 0.5</option>
+                                    <option value="46-75" data-min="46" data-max="75" data-kc="0.6" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early fruit growth (Days 46-75) - Kc: 0.6</option>
+                                    <option value="76-110" data-min="76" data-max="110" data-kc="0.85" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit growth (Days 76-110) - Kc: 0.85</option>
+                                    <option value="111-140" data-min="111" data-max="140" data-kc="0.75" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140) - Kc: 0.75</option>
+                                    <option value="141-290" data-min="141" data-max="290" data-kc="0.6" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290) - Kc: 0.6</option>
+                                    <option value="291-320" data-min="291" data-max="320" data-kc="0.4" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral initiation (Days 291-320) - Kc: 0.4</option>
+                                    <option value="321-365" data-min="321" data-max="365" data-kc="0.4" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral development (Days 321-365) - Kc: 0.4</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="growth_day">Current Growth Day:</label>
+                                <input type="number" id="growth_day" value="{current_day}" min="1" max="365" required>
+                                <small id="day_range_hint" style="color:#666;">Day range: 1-365 (select stage first)</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Current Kc Value:</label>
+                                <div id="kc_display" style="font-size: 1.5rem; font-weight: bold; color: #4CAF50; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">--</div>
                             </div>
                         </div>
                     </div>
@@ -2835,10 +3007,80 @@ async def configuration_page():
         </div>
 
         <script>
+            // Growth stage names mapping
+            const stageNames = {{
+                '1-45': 'Flowering & fruit setting (0-45 Days)',
+                '46-75': 'Early fruit growth (46-75 days)',
+                '76-110': 'Fruit growth (76-110 days)',
+                '111-140': 'Fruit Maturity (111-140 days)',
+                '141-290': 'Vegetative Growth (141-290 days)',
+                '291-320': 'Floral initiation (291-320 days)',
+                '321-365': 'Floral development (321-365 days)'
+            }};
+
+            // Update day range and Kc display when stage changes
+            function updateDayRange() {{
+                const stageSelect = document.getElementById('growth_stage');
+                const dayInput = document.getElementById('growth_day');
+                const hintElement = document.getElementById('day_range_hint');
+                const kcDisplay = document.getElementById('kc_display');
+
+                const selectedOption = stageSelect.options[stageSelect.selectedIndex];
+                const minDay = parseInt(selectedOption.dataset.min);
+                const maxDay = parseInt(selectedOption.dataset.max);
+                const kc = selectedOption.dataset.kc;
+
+                // Update day input constraints
+                dayInput.min = minDay;
+                dayInput.max = maxDay;
+
+                // Clamp current value if outside range
+                const currentDay = parseInt(dayInput.value);
+                if (currentDay < minDay) dayInput.value = minDay;
+                if (currentDay > maxDay) dayInput.value = maxDay;
+
+                // Update hint and Kc display
+                hintElement.textContent = `Allowed range: Day ${{minDay}} - ${{maxDay}}`;
+                kcDisplay.textContent = `Kc = ${{kc}}`;
+            }}
+
+            // Initialize on page load
+            window.onload = function() {{
+                // Find the stage that matches current day
+                const currentDay = parseInt(document.getElementById('growth_day').value);
+                const stageSelect = document.getElementById('growth_stage');
+
+                for (let i = 0; i < stageSelect.options.length; i++) {{
+                    const opt = stageSelect.options[i];
+                    const minDay = parseInt(opt.dataset.min);
+                    const maxDay = parseInt(opt.dataset.max);
+                    if (currentDay >= minDay && currentDay <= maxDay) {{
+                        stageSelect.selectedIndex = i;
+                        break;
+                    }}
+                }}
+                updateDayRange();
+            }};
+
+            // Validate day when changed
+            document.getElementById('growth_day').addEventListener('change', function() {{
+                const stageSelect = document.getElementById('growth_stage');
+                const selectedOption = stageSelect.options[stageSelect.selectedIndex];
+                const minDay = parseInt(selectedOption.dataset.min);
+                const maxDay = parseInt(selectedOption.dataset.max);
+                let value = parseInt(this.value);
+
+                if (value < minDay) this.value = minDay;
+                if (value > maxDay) this.value = maxDay;
+            }});
+
             document.getElementById('configForm').addEventListener('submit', async function(e) {{
                 e.preventDefault();
 
                 const growthDay = parseInt(document.getElementById('growth_day').value);
+                const stageSelect = document.getElementById('growth_stage');
+                const stageValue = stageSelect.value;
+                const stageName = stageNames[stageValue];
 
                 // First update growth stage
                 try {{
@@ -2853,7 +3095,7 @@ async def configuration_page():
                 const formData = {{
                     farm_name: document.getElementById('farm_name').value,
                     crop_type: document.getElementById('crop_type').value,
-                    crop_growth_stage: "Auto", // Will be set by growth day
+                    crop_growth_stage: stageName,
                     soil_type: document.getElementById('soil_type').value,
                     irrigation_type: document.getElementById('irrigation_type').value,
                     emitter_rate: parseFloat(document.getElementById('emitter_rate').value),
