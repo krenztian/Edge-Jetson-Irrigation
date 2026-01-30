@@ -2359,6 +2359,12 @@ async def dashboard():
     current_stage = get_growth_stage_from_day(current_day)
     vpd_range = VPD_RANGES.get(current_stage, {"min": 0, "max": 2, "optimal": 1})
 
+    # Get current Kc value from irrigation calculator
+    current_kc = irrigation_calc.get_kc(
+        irrigation_config.get("crop_type", "Durian"),
+        current_stage
+    )
+
     # VPD status
     vpd_status = check_vpd_status(current_vpd, current_stage) if current_vpd else {"status": "unknown", "color": "#999"}
 
@@ -2497,6 +2503,15 @@ async def dashboard():
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{ font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #e3f2fd 0%, #f8f9ff 100%); min-height: 100vh; color: #2c3e50; line-height: 1.6; }}
+            .status-bar {{ background: rgba(30, 30, 30, 0.9); color: white; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; position: sticky; top: 0; z-index: 1000; backdrop-filter: blur(10px); }}
+            .status-bar-left {{ display: flex; align-items: center; gap: 15px; }}
+            .status-bar-right {{ display: flex; align-items: center; gap: 15px; }}
+            .status-bar-date {{ font-weight: 500; }}
+            .status-bar-time {{ opacity: 0.8; }}
+            .status-bar-growth {{ display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 12px; }}
+            .status-bar-day {{ font-weight: 600; color: #4CAF50; }}
+            .status-bar-stage {{ opacity: 0.9; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+            .status-bar-kc {{ background: #4CAF50; padding: 2px 8px; border-radius: 8px; font-weight: 600; font-size: 0.7rem; }}
             .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
             .header {{ text-align: center; margin-bottom: 25px; padding: 20px; background: rgba(255, 255, 255, 0.9); border-radius: 20px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
             .header h1 {{ font-size: 2rem; font-weight: 600; color: #1976D2; margin-bottom: 8px; }}
@@ -2504,13 +2519,11 @@ async def dashboard():
             .nav-bar {{ display: flex; justify-content: center; gap: 12px; margin-bottom: 25px; flex-wrap: wrap; }}
             .nav-btn {{ padding: 8px 16px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(25, 118, 210, 0.2); border-radius: 15px; color: #1976D2; text-decoration: none; font-weight: 500; font-size: 0.85rem; transition: all 0.3s ease; }}
             .nav-btn:hover, .nav-btn.active {{ background: #1976D2; color: white; transform: translateY(-1px); }}
-            .growth-stage-banner {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 25px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }}
-            .growth-info {{ display: flex; align-items: center; gap: 20px; }}
-            .growth-day {{ font-size: 2.5rem; font-weight: 700; }}
-            .growth-stage-name {{ font-size: 1.1rem; opacity: 0.9; }}
-            .vpd-indicator {{ background: rgba(255,255,255,0.2); padding: 10px 20px; border-radius: 10px; text-align: center; }}
-            .vpd-value {{ font-size: 1.5rem; font-weight: 600; }}
-            .vpd-status {{ font-size: 0.85rem; opacity: 0.9; }}
+            .growth-stage-banner {{ display: none; }}
+            .vpd-banner {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 25px; border-radius: 15px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; gap: 30px; flex-wrap: wrap; }}
+            .vpd-indicator {{ background: rgba(255,255,255,0.2); padding: 8px 20px; border-radius: 10px; text-align: center; display: flex; align-items: center; gap: 15px; }}
+            .vpd-value {{ font-size: 1.3rem; font-weight: 600; }}
+            .vpd-status {{ font-size: 0.8rem; opacity: 0.9; }}
             .sensor-status-bar {{ background: rgba(255, 255, 255, 0.9); padding: 10px 20px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; }}
             .sensor-item {{ display: flex; align-items: center; font-size: 0.85rem; }}
             .dashboard-main {{ display: grid; grid-template-columns: 350px 1fr; gap: 25px; margin-bottom: 30px; }}
@@ -2588,6 +2601,20 @@ async def dashboard():
         </style>
     </head>
     <body>
+        <div class="status-bar">
+            <div class="status-bar-left">
+                <span class="status-bar-date">{datetime.now().strftime("%a, %d %b %Y")}</span>
+                <span class="status-bar-time">{datetime.now().strftime("%H:%M")}</span>
+            </div>
+            <div class="status-bar-right">
+                <div class="status-bar-growth">
+                    <span class="status-bar-day">Day {current_day}</span>
+                    <span class="status-bar-stage">{current_stage[:25]}...</span>
+                    <span class="status-bar-kc">Kc {current_kc:.2f}</span>
+                </div>
+            </div>
+        </div>
+
         <div class="container">
             <div class="header">
                 <h1>Smart Irrigation Control System v3</h1>
@@ -2601,18 +2628,13 @@ async def dashboard():
                 <a href="/docs" class="nav-btn">API</a>
             </div>
 
-            <div class="growth-stage-banner">
-                <div class="growth-info">
-                    <div class="growth-day">Day {current_day}</div>
-                    <div>
-                        <div class="growth-stage-name">{current_stage}</div>
-                        <div style="font-size:0.8rem;opacity:0.8;">Kc: {irrigation_config.get('kc', 0.6):.2f}</div>
-                    </div>
-                </div>
+            <div class="vpd-banner">
                 <div class="vpd-indicator" style="background:{vpd_status.get('color', '#999')}40;">
-                    <div class="vpd-value">{current_vpd:.2f} kPa</div>
-                    <div class="vpd-status">{vpd_status.get('status', 'N/A').upper()}</div>
-                    <div style="font-size:0.7rem;opacity:0.8;">Range: {vpd_range.get('min', 0)}-{vpd_range.get('max', 2)} kPa</div>
+                    <div>
+                        <div class="vpd-value">{current_vpd:.2f} kPa</div>
+                        <div class="vpd-status">VPD: {vpd_status.get('status', 'N/A').upper()}</div>
+                    </div>
+                    <div style="font-size:0.75rem;opacity:0.8;">Range: {vpd_range.get('min', 0)}-{vpd_range.get('max', 2)} kPa</div>
                 </div>
             </div>
 
