@@ -3047,6 +3047,51 @@ async def raw_sensor_data_page():
             }}
             .datetime-date {{ font-size: 0.85rem; font-weight: 600; color: var(--gray-800); }}
             .datetime-time {{ font-size: 0.75rem; color: var(--gray-500); }}
+            .top-bar-right {{
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }}
+
+            /* Language Toggle */
+            .lang-toggle {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: var(--gray-100);
+                padding: 4px;
+                border-radius: 8px;
+                border: 1px solid var(--gray-200);
+            }}
+            .lang-btn {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.75rem;
+                font-weight: 500;
+                color: var(--gray-600);
+                transition: all 0.2s ease;
+            }}
+            .lang-btn:hover {{
+                background: var(--gray-200);
+            }}
+            .lang-btn.active {{
+                background: white;
+                color: var(--primary);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .lang-flag {{
+                width: 18px;
+                height: 14px;
+                border-radius: 2px;
+                object-fit: cover;
+                box-shadow: 0 0 1px rgba(0,0,0,0.3);
+            }}
 
             /* Stats Grid */
             .stats-grid {{
@@ -3185,10 +3230,22 @@ async def raw_sensor_data_page():
             <main class="main-content">
                 <!-- Top Bar -->
                 <div class="top-bar">
-                    <h1 class="page-title">Raw Sensor Data</h1>
-                    <div class="datetime-display">
-                        <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
-                        <div class="datetime-time">{datetime.now().strftime("%H:%M")} • Auto-refresh 60s</div>
+                    <h1 class="page-title" data-en="Raw Sensor Data" data-th="ข้อมูลเซ็นเซอร์ดิบ">Raw Sensor Data</h1>
+                    <div class="top-bar-right">
+                        <div class="datetime-display">
+                            <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
+                            <div class="datetime-time">{datetime.now().strftime("%H:%M")} • <span data-en="Auto-refresh 60s" data-th="รีเฟรชอัตโนมัติ 60 วินาที">Auto-refresh 60s</span></div>
+                        </div>
+                        <div class="lang-toggle">
+                            <button class="lang-btn active" onclick="setLanguage('en')" id="lang-en">
+                                <img src="https://flagcdn.com/w20/gb.png" alt="EN" class="lang-flag">
+                                <span>EN</span>
+                            </button>
+                            <button class="lang-btn" onclick="setLanguage('th')" id="lang-th">
+                                <img src="https://flagcdn.com/w20/th.png" alt="TH" class="lang-flag">
+                                <span>TH</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -3246,10 +3303,26 @@ async def raw_sensor_data_page():
                 </div>
 
                 <div class="refresh-info">
-                    🔄 Auto-refreshes every 60 seconds | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                    🔄 <span data-en="Auto-refreshes every 60 seconds" data-th="รีเฟรชอัตโนมัติทุก 60 วินาที">Auto-refreshes every 60 seconds</span> | <span data-en="Last updated" data-th="อัปเดตล่าสุด">Last updated</span>: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 </div>
             </main>
         </div>
+
+        <script>
+            // Language Toggle Functionality
+            function setLanguage(lang) {{
+                localStorage.setItem('aquasense_lang', lang);
+                document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+                document.getElementById('lang-th').classList.toggle('active', lang === 'th');
+                document.querySelectorAll('[data-en][data-th]').forEach(el => {{
+                    el.textContent = el.getAttribute('data-' + lang);
+                }});
+            }}
+            document.addEventListener('DOMContentLoaded', function() {{
+                const savedLang = localStorage.getItem('aquasense_lang') || 'en';
+                setLanguage(savedLang);
+            }});
+        </script>
     </body>
     </html>
     """
@@ -3747,6 +3820,46 @@ async def dashboard():
             .datetime-date {{ font-size: 0.85rem; font-weight: 600; color: var(--gray-800); }}
             .datetime-time {{ font-size: 0.75rem; color: var(--gray-500); }}
 
+            /* Language Toggle */
+            .lang-toggle {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: var(--gray-100);
+                padding: 4px;
+                border-radius: 8px;
+                border: 1px solid var(--gray-200);
+            }}
+            .lang-btn {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.75rem;
+                font-weight: 500;
+                color: var(--gray-600);
+                transition: all 0.2s ease;
+            }}
+            .lang-btn:hover {{
+                background: var(--gray-200);
+            }}
+            .lang-btn.active {{
+                background: white;
+                color: var(--primary);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .lang-flag {{
+                width: 18px;
+                height: 14px;
+                border-radius: 2px;
+                object-fit: cover;
+                box-shadow: 0 0 1px rgba(0,0,0,0.3);
+            }}
+
             /* Growth Stage Pill */
             .growth-pill {{
                 display: flex;
@@ -4161,16 +4274,26 @@ async def dashboard():
             <main class="main-content">
                 <!-- Top Bar -->
                 <div class="top-bar">
-                    <h1 class="page-title">Dashboard</h1>
+                    <h1 class="page-title" data-en="Dashboard" data-th="แดชบอร์ด">Dashboard</h1>
                     <div class="top-bar-right">
                         <div class="growth-pill">
-                            <span class="growth-day">Day {current_day}</span>
+                            <span class="growth-day" data-en="Day {current_day}" data-th="วันที่ {current_day}">Day {current_day}</span>
                             <span style="color: var(--gray-600);">{current_stage[:20]}...</span>
                             <span class="growth-kc">Kc {current_kc:.2f}</span>
                         </div>
                         <div class="datetime-display">
                             <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
-                            <div class="datetime-time">{datetime.now().strftime("%H:%M")} • Auto-refresh 30s</div>
+                            <div class="datetime-time">{datetime.now().strftime("%H:%M")} • <span data-en="Auto-refresh 30s" data-th="รีเฟรชอัตโนมัติ 30 วินาที">Auto-refresh 30s</span></div>
+                        </div>
+                        <div class="lang-toggle">
+                            <button class="lang-btn active" onclick="setLanguage('en')" id="lang-en">
+                                <img src="https://flagcdn.com/w20/gb.png" alt="EN" class="lang-flag">
+                                <span>EN</span>
+                            </button>
+                            <button class="lang-btn" onclick="setLanguage('th')" id="lang-th">
+                                <img src="https://flagcdn.com/w20/th.png" alt="TH" class="lang-flag">
+                                <span>TH</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -4182,20 +4305,20 @@ async def dashboard():
                         <div class="vpd-header">
                             <div>
                                 <div class="vpd-main-value">{current_vpd:.2f} <span class="vpd-unit">kPa</span></div>
-                                <div style="font-size: 0.8rem; opacity: 0.9;">Vapor Pressure Deficit</div>
+                                <div style="font-size: 0.8rem; opacity: 0.9;" data-en="Vapor Pressure Deficit" data-th="ความดันไอน้ำ">Vapor Pressure Deficit</div>
                             </div>
                             <div class="vpd-status-badge" style="background: {vpd_status.get('color', '#999')};">{vpd_status.get('status', 'N/A').upper()}</div>
                         </div>
                         <div class="vpd-body">
                             <div class="vpd-range">
-                                <span class="vpd-range-label">Optimal Range</span>
+                                <span class="vpd-range-label" data-en="Optimal Range" data-th="ช่วงที่เหมาะสม">Optimal Range</span>
                                 <span class="vpd-range-value">{vpd_range.get('min', 0)} - {vpd_range.get('max', 2)} kPa</span>
                             </div>
                             <div class="vpd-gauge">
                                 <div class="vpd-gauge-fill" style="width: {min(current_vpd / 3 * 100, 100)}%; background: {vpd_status.get('color', '#999')};"></div>
                             </div>
                             <div style="margin-top: 12px; font-size: 0.8rem; color: var(--gray-600);">
-                                {'⚠️ Consider irrigation' if vpd_status.get('status') == 'high' else '✅ VPD within acceptable range' if vpd_status.get('status') in ['optimal', 'normal'] else '❄️ Low VPD detected'}
+                                {'⚠️ <span data-en="Consider irrigation" data-th="พิจารณาให้น้ำ">Consider irrigation</span>' if vpd_status.get('status') == 'high' else '✅ <span data-en="VPD within acceptable range" data-th="VPD อยู่ในช่วงที่ยอมรับได้">VPD within acceptable range</span>' if vpd_status.get('status') in ['optimal', 'normal'] else '❄️ <span data-en="Low VPD detected" data-th="ตรวจพบ VPD ต่ำ">Low VPD detected</span>'}
                             </div>
                         </div>
                     </div>
@@ -4206,11 +4329,11 @@ async def dashboard():
                             <div class="pump-status">
                                 <div class="pump-status-dot {'on' if pump_is_effectively_on else 'needed' if irrigation_needed else 'off'}"></div>
                                 <span class="pump-status-text {'on' if pump_is_effectively_on else 'needed' if irrigation_needed else 'off'}">
-                                    {'PUMP RUNNING' if pump_is_effectively_on else 'IRRIGATION NEEDED' if irrigation_needed else 'PUMP OFF'}
+                                    {'<span data-en="PUMP RUNNING" data-th="ปั๊มทำงาน">PUMP RUNNING</span>' if pump_is_effectively_on else '<span data-en="IRRIGATION NEEDED" data-th="ต้องการให้น้ำ">IRRIGATION NEEDED</span>' if irrigation_needed else '<span data-en="PUMP OFF" data-th="ปั๊มปิด">PUMP OFF</span>'}
                                 </span>
                             </div>
                             <div style="font-size: 0.75rem; color: var(--gray-500);">
-                                {irrigation_config.get('irrigation_type', 'Sprinkler')} System
+                                {irrigation_config.get('irrigation_type', 'Sprinkler')} <span data-en="System" data-th="ระบบ">System</span>
                             </div>
                         </div>
                         <div class="pump-body">
@@ -4249,8 +4372,8 @@ async def dashboard():
                 <div class="sensors-section">
                     <div class="section-header">
                         <div class="section-icon blue">📡</div>
-                        <span class="section-title">Live Sensor Readings</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">15-min aggregates from ESP32</span>
+                        <span class="section-title" data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="15-min aggregates from ESP32" data-th="ข้อมูลรวม 15 นาทีจาก ESP32">15-min aggregates from ESP32</span>
                     </div>
                     <div class="sensor-grid">
                         <div class="sensor-card">
@@ -4258,9 +4381,9 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: var(--primary-light);">🌡️</div>
                                 <div class="sensor-status {temp_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Temperature</div>
+                            <div class="sensor-name" data-en="Temperature" data-th="อุณหภูมิ">Temperature</div>
                             <div class="sensor-value">{current_temp_max:.1f}<span class="sensor-unit">°C</span></div>
-                            <div style="font-size: 0.7rem; color: var(--gray-500);">Min: {current_temp_min:.1f}°C</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);"><span data-en="Min" data-th="ต่ำสุด">Min</span>: {current_temp_min:.1f}°C</div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_temp_max/50*100, 100)}%; background: var(--primary);"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -4268,7 +4391,7 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #E3F2FD;">💧</div>
                                 <div class="sensor-status {humidity_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Humidity</div>
+                            <div class="sensor-name" data-en="Humidity" data-th="ความชื้น">Humidity</div>
                             <div class="sensor-value">{current_humidity:.0f}<span class="sensor-unit">%</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {current_humidity}%; background: #42a5f5;"></div></div>
                         </div>
@@ -4277,7 +4400,7 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #E8F5E9;">🌬️</div>
                                 <div class="sensor-status {wind_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Wind Speed</div>
+                            <div class="sensor-name" data-en="Wind Speed" data-th="ความเร็วลม">Wind Speed</div>
                             <div class="sensor-value">{current_wind:.2f}<span class="sensor-unit">m/s</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_wind*10, 100)}%; background: #66bb6a;"></div></div>
                         </div>
@@ -4286,7 +4409,7 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #FFF8E1;">☀️</div>
                                 <div class="sensor-status {solar_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Solar Radiation</div>
+                            <div class="sensor-name" data-en="Solar Radiation" data-th="รังสีดวงอาทิตย์">Solar Radiation</div>
                             <div class="sensor-value">{current_solar_wm2:.0f}<span class="sensor-unit">W/m²</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_solar_wm2/10, 100)}%; background: #ffa726;"></div></div>
                         </div>
@@ -4295,7 +4418,7 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #E1F5FE;">🌧️</div>
                                 <div class="sensor-status {rain_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Rainfall</div>
+                            <div class="sensor-name" data-en="Rainfall" data-th="ปริมาณฝน">Rainfall</div>
                             <div class="sensor-value">{current_rainfall:.1f}<span class="sensor-unit">mm</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_rainfall*5, 100)}%; background: #2196f3;"></div></div>
                         </div>
@@ -4304,7 +4427,7 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #F3E5F5;">📊</div>
                                 <div class="sensor-status {pressure_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Pressure</div>
+                            <div class="sensor-name" data-en="Pressure" data-th="ความกดอากาศ">Pressure</div>
                             <div class="sensor-value">{current_pressure:.0f}<span class="sensor-unit">hPa</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min((current_pressure-950)/100*100, 100) if current_pressure else 0}%; background: #9c27b0;"></div></div>
                         </div>
@@ -4313,9 +4436,9 @@ async def dashboard():
                                 <div class="sensor-icon" style="background: #FFFDE7;">⏱️</div>
                                 <div class="sensor-status {sunshine_status_class}"></div>
                             </div>
-                            <div class="sensor-name">Sunshine</div>
+                            <div class="sensor-name" data-en="Sunshine" data-th="แสงแดด">Sunshine</div>
                             <div class="sensor-value">{current_sunshine_min:.0f}<span class="sensor-unit">min</span></div>
-                            <div style="font-size: 0.7rem; color: var(--gray-500);">Last 15-min period</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);" data-en="Last 15-min period" data-th="ช่วง 15 นาทีล่าสุด">Last 15-min period</div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_sunshine_min/15*100, 100)}%; background: #ffb300;"></div></div>
                         </div>
                     </div>
@@ -4325,8 +4448,8 @@ async def dashboard():
                 <div class="daily-section">
                     <div class="section-header">
                         <div class="section-icon green">🌿</div>
-                        <span class="section-title">Daily Evapotranspiration</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Updated at 6:00 AM</span>
+                        <span class="section-title" data-en="Daily Evapotranspiration" data-th="การคายระเหยรายวัน">Daily Evapotranspiration</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Updated at 6:01 AM" data-th="อัปเดตเวลา 6:01 น.">Updated at 6:01 AM</span>
                     </div>
                     <div class="daily-grid">
                         <div class="daily-card">
@@ -4418,6 +4541,96 @@ async def dashboard():
 
         <script>
             {countdown_script}
+
+            // Language Toggle Functionality
+            const translations = {{
+                en: {{
+                    dashboard: "Dashboard",
+                    vpdCard: "Vapor Pressure Deficit",
+                    pumpControl: "Pump Control",
+                    sensorStatus: "Sensor Status",
+                    temperature: "Temperature",
+                    humidity: "Humidity",
+                    pressure: "Pressure",
+                    wind: "Wind",
+                    solar: "Solar",
+                    rain: "Rain",
+                    vpd: "VPD",
+                    sunshine: "Sunshine",
+                    online: "Online",
+                    offline: "Offline",
+                    recentTrends: "Recent Trends",
+                    irrigationHistory: "Irrigation History",
+                    autoRefresh: "Auto-refresh 30s",
+                    day: "Day",
+                    open: "OPEN",
+                    close: "CLOSE",
+                    valveClosed: "Valve Closed",
+                    valveOpen: "Valve Open",
+                    pumpReady: "Pump ready to activate",
+                    duration: "Duration",
+                    minutes: "minutes",
+                    openFor: "Open for",
+                    noData: "No data"
+                }},
+                th: {{
+                    dashboard: "แดชบอร์ด",
+                    vpdCard: "ความดันไอน้ำ",
+                    pumpControl: "ควบคุมปั๊ม",
+                    sensorStatus: "สถานะเซ็นเซอร์",
+                    temperature: "อุณหภูมิ",
+                    humidity: "ความชื้น",
+                    pressure: "ความกดอากาศ",
+                    wind: "ลม",
+                    solar: "แสงอาทิตย์",
+                    rain: "ฝน",
+                    vpd: "VPD",
+                    sunshine: "แสงแดด",
+                    online: "ออนไลน์",
+                    offline: "ออฟไลน์",
+                    recentTrends: "แนวโน้มล่าสุด",
+                    irrigationHistory: "ประวัติการให้น้ำ",
+                    autoRefresh: "รีเฟรชอัตโนมัติ 30 วินาที",
+                    day: "วันที่",
+                    open: "เปิด",
+                    close: "ปิด",
+                    valveClosed: "วาล์วปิด",
+                    valveOpen: "วาล์วเปิด",
+                    pumpReady: "ปั๊มพร้อมทำงาน",
+                    duration: "ระยะเวลา",
+                    minutes: "นาที",
+                    openFor: "เปิดเป็นเวลา",
+                    noData: "ไม่มีข้อมูล"
+                }}
+            }};
+
+            function setLanguage(lang) {{
+                // Save to localStorage
+                localStorage.setItem('aquasense_lang', lang);
+
+                // Update button states
+                document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+                document.getElementById('lang-th').classList.toggle('active', lang === 'th');
+
+                // Update all elements with data-en and data-th attributes
+                document.querySelectorAll('[data-en][data-th]').forEach(el => {{
+                    el.textContent = el.getAttribute('data-' + lang);
+                }});
+
+                // Update specific elements by class
+                document.querySelectorAll('.translatable').forEach(el => {{
+                    const key = el.getAttribute('data-key');
+                    if (key && translations[lang][key]) {{
+                        el.textContent = translations[lang][key];
+                    }}
+                }});
+            }}
+
+            // Initialize language on page load
+            document.addEventListener('DOMContentLoaded', function() {{
+                const savedLang = localStorage.getItem('aquasense_lang') || 'en';
+                setLanguage(savedLang);
+            }});
 
             async function controlPump(action, duration = null) {{
                 try {{
@@ -4914,6 +5127,50 @@ async def configuration_page():
                 .status-banner {{ flex-direction: column; gap: 16px; align-items: flex-start; }}
                 .status-pills {{ width: 100%; justify-content: space-between; }}
             }}
+
+            /* Page Header with Lang Toggle */
+            .page-header-row {{
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 24px;
+            }}
+            .lang-toggle {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: var(--gray-100);
+                padding: 4px;
+                border-radius: 8px;
+                border: 1px solid var(--gray-200);
+            }}
+            .lang-btn {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.75rem;
+                font-weight: 500;
+                color: var(--gray-600);
+                transition: all 0.2s ease;
+            }}
+            .lang-btn:hover {{ background: var(--gray-200); }}
+            .lang-btn.active {{
+                background: white;
+                color: var(--netafim-green);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .lang-flag {{
+                width: 18px;
+                height: 14px;
+                border-radius: 2px;
+                object-fit: cover;
+                box-shadow: 0 0 1px rgba(0,0,0,0.3);
+            }}
         </style>
     </head>
     <body>
@@ -4955,9 +5212,21 @@ async def configuration_page():
                     <a href="/docs" class="nav-item">API</a>
                 </nav>
 
-                <div class="page-header">
-                    <h1>Farm Settings</h1>
-                    <p>Configure your irrigation system parameters</p>
+                <div class="page-header-row">
+                    <div class="page-header">
+                        <h1 data-en="Farm Settings" data-th="การตั้งค่าฟาร์ม">Farm Settings</h1>
+                        <p data-en="Configure your irrigation system parameters" data-th="กำหนดค่าพารามิเตอร์ระบบชลประทาน">Configure your irrigation system parameters</p>
+                    </div>
+                    <div class="lang-toggle">
+                        <button class="lang-btn active" onclick="setLanguage('en')" id="lang-en">
+                            <img src="https://flagcdn.com/w20/gb.png" alt="EN" class="lang-flag">
+                            <span>EN</span>
+                        </button>
+                        <button class="lang-btn" onclick="setLanguage('th')" id="lang-th">
+                            <img src="https://flagcdn.com/w20/th.png" alt="TH" class="lang-flag">
+                            <span>TH</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Status Banner -->
@@ -5263,8 +5532,22 @@ async def configuration_page():
                     `<span>📐</span><span>Canopy: ${{canopyArea.toFixed(1)}}m² → Root: ${{rootArea.toFixed(1)}}m² → Wetted: ${{wettedArea.toFixed(1)}}m²</span>`;
             }}
 
+            // Language Toggle Functionality
+            function setLanguage(lang) {{
+                localStorage.setItem('aquasense_lang', lang);
+                document.getElementById('lang-en').classList.toggle('active', lang === 'en');
+                document.getElementById('lang-th').classList.toggle('active', lang === 'th');
+                document.querySelectorAll('[data-en][data-th]').forEach(el => {{
+                    el.textContent = el.getAttribute('data-' + lang);
+                }});
+            }}
+
             // Initialize on page load
             window.onload = function() {{
+                // Initialize language
+                const savedLang = localStorage.getItem('aquasense_lang') || 'en';
+                setLanguage(savedLang);
+
                 // Find the stage that matches current day
                 const currentDay = parseInt(document.getElementById('growth_day').value);
                 const stageSelect = document.getElementById('growth_stage');
