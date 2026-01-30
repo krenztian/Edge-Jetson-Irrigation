@@ -2824,6 +2824,14 @@ async def dashboard():
         color = "#4caf50" if s["online"] else "#999"
         return f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{color};margin-right:5px;"></span>'
 
+    # Pre-compute sensor status classes for HTML (avoids f-string issues with empty dict)
+    temp_status_class = 'online' if sensor_status.get('temperature', {}).get('online') else 'offline'
+    humidity_status_class = 'online' if sensor_status.get('humidity', {}).get('online') else 'offline'
+    wind_status_class = 'online' if sensor_status.get('wind', {}).get('online') else 'offline'
+    solar_status_class = 'online' if sensor_status.get('solar', {}).get('online') else 'offline'
+    rain_status_class = 'online' if sensor_status.get('rain', {}).get('online') else 'offline'
+    pressure_status_class = 'online' if sensor_status.get('pressure', {}).get('online') else 'offline'
+
     # Countdown section
     countdown_section = ""
     countdown_script = ""
@@ -3587,7 +3595,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: var(--primary-light);">🌡️</div>
-                                <div class="sensor-status {'online' if sensor_status.get('temperature', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {temp_status_class}"></div>
                             </div>
                             <div class="sensor-name">Temperature</div>
                             <div class="sensor-value">{current_temp_max:.1f}<span class="sensor-unit">°C</span></div>
@@ -3597,7 +3605,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E3F2FD;">💧</div>
-                                <div class="sensor-status {'online' if sensor_status.get('humidity', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {humidity_status_class}"></div>
                             </div>
                             <div class="sensor-name">Humidity</div>
                             <div class="sensor-value">{current_humidity:.0f}<span class="sensor-unit">%</span></div>
@@ -3606,7 +3614,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E8F5E9;">🌬️</div>
-                                <div class="sensor-status {'online' if sensor_status.get('wind', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {wind_status_class}"></div>
                             </div>
                             <div class="sensor-name">Wind Speed</div>
                             <div class="sensor-value">{current_wind:.2f}<span class="sensor-unit">m/s</span></div>
@@ -3615,7 +3623,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #FFF8E1;">☀️</div>
-                                <div class="sensor-status {'online' if sensor_status.get('solar', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {solar_status_class}"></div>
                             </div>
                             <div class="sensor-name">Solar Radiation</div>
                             <div class="sensor-value">{current_solar_wm2:.0f}<span class="sensor-unit">W/m²</span></div>
@@ -3624,7 +3632,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E1F5FE;">🌧️</div>
-                                <div class="sensor-status {'online' if sensor_status.get('rain', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {rain_status_class}"></div>
                             </div>
                             <div class="sensor-name">Rainfall</div>
                             <div class="sensor-value">{current_rainfall:.1f}<span class="sensor-unit">mm</span></div>
@@ -3633,7 +3641,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #F3E5F5;">📊</div>
-                                <div class="sensor-status {'online' if sensor_status.get('pressure', {{}}).get('online') else 'offline'}"></div>
+                                <div class="sensor-status {pressure_status_class}"></div>
                             </div>
                             <div class="sensor-name">Pressure</div>
                             <div class="sensor-value">{current_pressure:.0f}<span class="sensor-unit">hPa</span></div>
