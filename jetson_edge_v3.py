@@ -74,6 +74,10 @@ cycle_data = {}
 irrigation_config = {}
 irrigation_history = deque(maxlen=20)
 
+# Local storage for 15-minute records (for daily aggregation)
+# Stores up to 100 records (25+ hours of data)
+local_15min_records = deque(maxlen=100)
+
 # Track last processed timestamp for recovery
 last_processed_timestamp = None
 recovery_status = {
@@ -429,6 +433,63 @@ class InfluxDBRecovery:
 influx_recovery = InfluxDBRecovery()
 
 # =========================
+# Local 15-min Record Storage Functions
+# =========================
+def store_15min_record_locally(data: dict):
+    """
+    Store a 15-minute aggregate record locally for daily aggregation
+    Called when ESP32 sends data to /predict-esp32
+    """
+    record = {
+        "timestamp": data.get("timestamp", datetime.now().isoformat()),
+        "received_at": datetime.now().isoformat(),
+        "temp_min_15": data.get("tmin"),
+        "temp_max_15": data.get("tmax"),
+        "temp_avg_15": (data.get("tmin", 0) + data.get("tmax", 0)) / 2 if data.get("tmin") and data.get("tmax") else None,
+        "rh_avg_15": data.get("humidity"),
+        "pressure_avg_15": data.get("pressure"),
+        "wind_avg_15": data.get("wind_speed"),
+        "wind_max_15": data.get("wind_speed"),  # Same as avg for now
+        "solar_avg_15": None,  # Not directly available
+        "sunshine_min_15": data.get("sunshine_hours", 0) * 60 / 96 if data.get("sunshine_hours") else 0,  # Estimate per 15-min
+        "rain_mm_15": data.get("rainfall_mm", 0),
+        "vpd_avg_15": data.get("vpd"),
+        "device": data.get("device_id", "ESP32")
+    }
+
+    local_15min_records.append(record)
+    logger.debug(f"Stored 15-min record locally (total: {len(local_15min_records)})")
+
+def get_local_15min_records_for_date(target_date: date) -> list:
+    """
+    Get locally stored 15-minute records for a specific date
+    Returns records that fall within the target date (midnight to midnight)
+    """
+    start_time = datetime.combine(target_date, datetime.min.time())
+    end_time = start_time + timedelta(days=1)
+
+    matching_records = []
+    for record in local_15min_records:
+        try:
+            # Parse timestamp
+            ts_str = record.get("timestamp") or record.get("received_at")
+            if ts_str:
+                # Handle different timestamp formats
+                if "T" in ts_str:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+                else:
+                    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+
+                if start_time <= ts < end_time:
+                    matching_records.append(record)
+        except Exception as e:
+            logger.debug(f"Error parsing timestamp: {e}")
+            continue
+
+    logger.info(f"Found {len(matching_records)} local 15-min records for {target_date}")
+    return matching_records
+
+# =========================
 # Daily Aggregation Storage
 # =========================
 daily_prediction_result = {
@@ -487,7 +548,8 @@ def calculate_daily_aggregates_from_15min(records: list) -> dict:
 
 async def run_daily_prediction(target_date: date = None):
     """
-    Run daily ETo prediction using aggregated data from InfluxDB
+    Run daily ETo prediction using aggregated data
+    HYBRID APPROACH: Uses local storage first, InfluxDB as fallback
     Called at 6:00 AM for yesterday's data
     """
     global daily_prediction_result
@@ -497,8 +559,26 @@ async def run_daily_prediction(target_date: date = None):
 
     logger.info(f"=== RUNNING DAILY PREDICTION FOR {target_date} ===")
 
-    # Query 15-min records from InfluxDB
-    records = influx_recovery.query_15min_records_for_date(target_date)
+    # STEP 1: Try to get records from local storage first
+    records = get_local_15min_records_for_date(target_date)
+    data_source = "local"
+
+    # Check if we have enough local data (at least 50% = 48 records)
+    if len(records) < 48:
+        logger.info(f"Local data incomplete ({len(records)}/96). Querying InfluxDB as fallback...")
+        influx_records = influx_recovery.query_15min_records_for_date(target_date)
+
+        if influx_records and len(influx_records) > len(records):
+            records = influx_records
+            data_source = "influxdb"
+            logger.info(f"Using InfluxDB data: {len(records)} records")
+        elif records:
+            logger.info(f"InfluxDB returned fewer/no records. Using local data: {len(records)} records")
+        else:
+            logger.warning(f"No 15-min records found for {target_date} (local or InfluxDB)")
+            return None
+    else:
+        logger.info(f"Using local data: {len(records)} records (sufficient coverage)")
 
     if not records:
         logger.warning(f"No 15-min records found for {target_date}")
@@ -511,9 +591,13 @@ async def run_daily_prediction(target_date: date = None):
         logger.error("Failed to calculate daily aggregates")
         return None
 
+    # Add data source info
+    daily["data_source"] = data_source
+
     # Store aggregates
     daily_prediction_result["daily_aggregates"] = daily
     daily_prediction_result["last_prediction_date"] = target_date.isoformat()
+    daily_prediction_result["data_source"] = data_source
 
     # Check if models are loaded
     if not all(models[key] is not None for key in ["rf_model", "mlp_model", "scaler_rad", "scaler_eto"]):
@@ -1173,11 +1257,26 @@ async def get_daily_prediction_status():
     if now >= next_run:
         next_run += timedelta(days=1)
 
+    # Get local storage stats
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    today_records = len(get_local_15min_records_for_date(today))
+    yesterday_records = len(get_local_15min_records_for_date(yesterday))
+
     return {
         "last_prediction_date": daily_prediction_result.get("last_prediction_date"),
         "last_prediction_time": daily_prediction_result.get("prediction_timestamp"),
+        "data_source_used": daily_prediction_result.get("data_source", "unknown"),
         "next_scheduled_run": next_run.isoformat(),
         "hours_until_next_run": (next_run - now).total_seconds() / 3600,
+        "local_storage": {
+            "total_records": len(local_15min_records),
+            "today_records": today_records,
+            "today_coverage_pct": round(today_records / 96 * 100, 1),
+            "yesterday_records": yesterday_records,
+            "yesterday_coverage_pct": round(yesterday_records / 96 * 100, 1),
+            "max_capacity": 100
+        },
         "influxdb_available": INFLUXDB_AVAILABLE
     }
 
@@ -1456,6 +1555,10 @@ async def predict_eto_esp32_compatible(data: dict):
 
         # Update rain sensor status
         update_sensor_status("rain", converted_data["rainfall_mm"])
+
+        # Store 15-min record locally for daily aggregation
+        store_15min_record_locally(converted_data)
+        logger.info(f"Stored 15-min record locally (total: {len(local_15min_records)} records)")
 
         weather_input = WeatherInput(**converted_data)
         return await predict_eto_endpoint(weather_input)
