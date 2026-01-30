@@ -1241,6 +1241,213 @@ async def trigger_daily_prediction(target_date: str = None):
     else:
         raise HTTPException(status_code=500, detail="Daily prediction failed - check logs")
 
+
+@app.post("/daily-prediction/simulate")
+async def simulate_daily_prediction(data: dict = None):
+    """
+    SIMULATION ENDPOINT: Test daily ETo prediction with custom 24-hour data
+
+    You can provide either:
+    1. Pre-calculated daily values directly
+    2. Array of 15-min records to aggregate
+
+    Example 1 - Direct daily values:
+    {
+        "mode": "direct",
+        "Tmin": 22.5,
+        "Tmax": 34.2,
+        "RHmean": 75.0,
+        "WindMean": 1.5,
+        "SunshineHours": 8.5,
+        "Rain": 0.0
+    }
+
+    Example 2 - Simulate with 15-min records:
+    {
+        "mode": "aggregate",
+        "records": [
+            {"temp_min_15": 23, "temp_max_15": 25, "rh_avg_15": 80, "wind_avg_15": 1.0, "sunshine_min_15": 0, "rain_mm_15": 0},
+            ...
+        ]
+    }
+
+    Example 3 - Generate random test data:
+    {
+        "mode": "random",
+        "num_records": 96
+    }
+    """
+    global daily_prediction_result
+
+    if data is None:
+        data = {}
+
+    mode = data.get("mode", "direct")
+
+    logger.info(f"=== SIMULATING DAILY PREDICTION (mode: {mode}) ===")
+
+    try:
+        if mode == "direct":
+            # Direct daily values provided
+            daily = {
+                "Tmin_day": data.get("Tmin", 24.0),
+                "Tmax_day": data.get("Tmax", 32.0),
+                "Tmean_day": data.get("Tmean", (data.get("Tmin", 24.0) + data.get("Tmax", 32.0)) / 2),
+                "RHmean_day": data.get("RHmean", 75.0),
+                "WindMean_day": data.get("WindMean", 1.5),
+                "SunshineHours_day": data.get("SunshineHours", 8.0),
+                "Rain_day": data.get("Rain", 0.0),
+                "PressureMean_day": data.get("Pressure", 1013.0),
+                "records_count": 96,
+                "data_completeness": 100.0,
+                "data_source": "simulation_direct"
+            }
+
+        elif mode == "aggregate":
+            # Aggregate from provided 15-min records
+            records = data.get("records", [])
+            if not records:
+                raise HTTPException(status_code=400, detail="No records provided for aggregation")
+
+            daily = calculate_daily_aggregates_from_15min(records)
+            if not daily:
+                raise HTTPException(status_code=400, detail="Failed to calculate aggregates from records")
+            daily["data_source"] = "simulation_aggregate"
+
+        elif mode == "random":
+            # Generate random realistic test data
+            import random
+            num_records = data.get("num_records", 96)
+
+            # Base values for realistic simulation
+            base_temp = random.uniform(24, 28)
+            temp_range = random.uniform(6, 12)
+            base_humidity = random.uniform(65, 85)
+
+            records = []
+            for i in range(num_records):
+                # Simulate diurnal variation
+                hour_of_day = (i * 15 / 60) % 24
+                temp_offset = temp_range * 0.5 * math.sin((hour_of_day - 6) * math.pi / 12)
+
+                temp_min = base_temp + temp_offset - random.uniform(0, 2)
+                temp_max = base_temp + temp_offset + random.uniform(0, 2)
+
+                # Sunshine only during day (6 AM - 6 PM)
+                is_daytime = 6 <= hour_of_day <= 18
+                sunshine_min = random.uniform(10, 15) if is_daytime and random.random() > 0.3 else 0
+
+                records.append({
+                    "temp_min_15": round(temp_min, 1),
+                    "temp_max_15": round(temp_max, 1),
+                    "temp_avg_15": round((temp_min + temp_max) / 2, 1),
+                    "rh_avg_15": round(base_humidity + random.uniform(-10, 10), 1),
+                    "wind_avg_15": round(random.uniform(0.5, 3.0), 1),
+                    "sunshine_min_15": round(sunshine_min, 1),
+                    "rain_mm_15": round(random.uniform(0, 0.5) if random.random() > 0.9 else 0, 2),
+                    "pressure_avg_15": round(1010 + random.uniform(-5, 5), 1)
+                })
+
+            daily = calculate_daily_aggregates_from_15min(records)
+            if not daily:
+                raise HTTPException(status_code=400, detail="Failed to generate random data")
+            daily["data_source"] = "simulation_random"
+            daily["generated_records"] = num_records
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown mode: {mode}. Use 'direct', 'aggregate', or 'random'")
+
+        # Log the daily values
+        logger.info(f"Daily values: Tmin={daily['Tmin_day']:.1f}, Tmax={daily['Tmax_day']:.1f}, "
+                   f"RH={daily['RHmean_day']:.1f}%, Wind={daily['WindMean_day']:.1f}m/s, "
+                   f"Sun={daily['SunshineHours_day']:.1f}h, Rain={daily['Rain_day']:.1f}mm")
+
+        # Check if models are loaded
+        if not all(models[key] is not None for key in ["rf_model", "mlp_model", "scaler_rad", "scaler_eto"]):
+            raise HTTPException(status_code=500, detail="Models not loaded - cannot run prediction")
+
+        # Run ML prediction
+        # Step 1: RAD estimation
+        rad_input = enhance_features_for_rad(
+            daily["Tmin_day"], daily["Tmax_day"], daily["RHmean_day"],
+            daily["WindMean_day"], daily["SunshineHours_day"]
+        )
+
+        rad_scaled = models["scaler_rad"].transform(rad_input)
+        rad_prediction_raw = models["rf_model"].predict(rad_scaled)[0]
+        estimated_rad = apply_nighttime_constraints(rad_prediction_raw, daily["SunshineHours_day"])
+
+        # Step 2: ETo prediction
+        eto_input = np.array([[
+            daily["Tmin_day"], daily["Tmax_day"], daily["RHmean_day"],
+            daily["WindMean_day"], daily["SunshineHours_day"], estimated_rad,
+        ]])
+
+        eto_scaled = models["scaler_eto"].transform(eto_input)
+        eto_prediction_raw = models["mlp_model"].predict(eto_scaled)[0]
+        eto_prediction = max(0.1, min(eto_prediction_raw, 15.0))
+
+        logger.info(f"SIMULATED ETo: {eto_prediction:.3f} mm/day (RAD: {estimated_rad:.2f} MJ/m²)")
+
+        # Calculate irrigation recommendation if config exists
+        irrigation_recommendation = None
+        if irrigation_config:
+            config = IrrigationConfig(**irrigation_config)
+            irrigation_recommendation = irrigation_calc.calculate_irrigation_recommendation(
+                eto_prediction, config, daily["Rain_day"]
+            )
+            irrigation_recommendation["simulation"] = True
+
+        # Build response
+        result = {
+            "status": "success",
+            "simulation_mode": mode,
+            "input_data": {
+                "Tmin": daily["Tmin_day"],
+                "Tmax": daily["Tmax_day"],
+                "Tmean": daily["Tmean_day"],
+                "RHmean": daily["RHmean_day"],
+                "WindMean": daily["WindMean_day"],
+                "SunshineHours": daily["SunshineHours_day"],
+                "Rain": daily["Rain_day"],
+                "data_source": daily.get("data_source", "unknown"),
+                "records_count": daily.get("records_count", 0),
+                "data_completeness_pct": daily.get("data_completeness", 0)
+            },
+            "ml_prediction": {
+                "estimated_rad_MJ_m2": round(float(estimated_rad), 3),
+                "eto_mm_day": round(float(eto_prediction), 3),
+                "eto_raw": round(float(eto_prediction_raw), 4)
+            },
+            "irrigation_recommendation": irrigation_recommendation,
+            "model_info": {
+                "rad_model": "Random Forest",
+                "eto_model": "MLP Neural Network",
+                "trained_on": models["metadata"].get("training_date", "unknown") if models["metadata"] else "unknown"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+        # Optionally store as latest prediction
+        if data.get("store_result", False):
+            daily_prediction_result["daily_aggregates"] = daily
+            daily_prediction_result["eto_prediction"] = result["ml_prediction"]
+            daily_prediction_result["irrigation_recommendation"] = irrigation_recommendation
+            daily_prediction_result["prediction_timestamp"] = datetime.now().isoformat()
+            daily_prediction_result["last_prediction_date"] = "SIMULATION"
+            daily_prediction_result["data_source"] = daily.get("data_source")
+            result["stored"] = True
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Simulation failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Simulation error: {e}")
+
 @app.get("/daily-prediction/latest")
 async def get_latest_daily_prediction():
     """Get the most recent daily prediction result"""
@@ -1536,9 +1743,99 @@ async def predict_eto_endpoint(weather_data: WeatherInput):
 # =========================
 # ESP32-Compatible Endpoint
 # =========================
+# =========================
+# NEW: 15-Minute Data Receive Endpoint (No ML Prediction)
+# =========================
+@app.post("/receive-15min")
+async def receive_15min_data(data: dict):
+    """
+    NEW V5 ENDPOINT: Receive 15-minute aggregate from ESP32
+    - Stores data locally for daily aggregation
+    - Updates dashboard/sensor status
+    - Does NOT run ML prediction (that happens at 6:00 AM)
+    """
+    try:
+        # Extract data from ESP32 payload
+        record = {
+            "timestamp": data.get("timestamp", datetime.now().isoformat()),
+            "received_at": datetime.now().isoformat(),
+            "temp_min_15": data.get("tmin"),
+            "temp_max_15": data.get("tmax"),
+            "temp_avg_15": (data.get("tmin", 0) + data.get("tmax", 0)) / 2 if data.get("tmin") and data.get("tmax") else None,
+            "rh_avg_15": data.get("humidity"),
+            "pressure_avg_15": data.get("pressure"),
+            "wind_avg_15": data.get("wind_speed"),
+            "wind_max_15": data.get("wind_speed"),
+            "solar_avg_15": data.get("solar_radiation"),
+            "sunshine_min_15": data.get("sunshine_minutes", 0),  # Direct minutes from ESP32
+            "rain_mm_15": data.get("rainfall", data.get("rainfall_mm", 0)),
+            "vpd_avg_15": data.get("vpd"),
+            "device": data.get("device_id", "ESP32"),
+            "aggregate_number": data.get("aggregate_number", 0)
+        }
+
+        # Store locally
+        local_15min_records.append(record)
+
+        # Update sensor status for dashboard
+        if record["temp_avg_15"]:
+            update_sensor_status("temperature", record["temp_avg_15"])
+        if record["rh_avg_15"]:
+            update_sensor_status("humidity", record["rh_avg_15"])
+        if record["pressure_avg_15"]:
+            update_sensor_status("pressure", record["pressure_avg_15"])
+        if record["wind_avg_15"] is not None:
+            update_sensor_status("wind", record["wind_avg_15"])
+        if record["solar_avg_15"] is not None:
+            update_sensor_status("solar", record["solar_avg_15"])
+        if record["rain_mm_15"] is not None:
+            update_sensor_status("rain", record["rain_mm_15"])
+        if record["vpd_avg_15"]:
+            update_sensor_status("vpd", record["vpd_avg_15"])
+
+        # Get local storage stats
+        today = date.today()
+        today_records = len(get_local_15min_records_for_date(today))
+
+        logger.info(f"[RECEIVE-15MIN] Stored record #{record['aggregate_number']} | "
+                   f"T:{record['temp_min_15']}-{record['temp_max_15']}°C | "
+                   f"RH:{record['rh_avg_15']}% | Rain:{record['rain_mm_15']}mm | "
+                   f"Today: {today_records}/96 records")
+
+        return {
+            "status": "success",
+            "message": "15-min data received and stored",
+            "record_stored": {
+                "timestamp": record["timestamp"],
+                "aggregate_number": record["aggregate_number"],
+                "temp_range": f"{record['temp_min_15']}-{record['temp_max_15']}°C",
+                "humidity": record["rh_avg_15"],
+                "rain_mm": record["rain_mm_15"],
+                "sunshine_min": record["sunshine_min_15"]
+            },
+            "local_storage": {
+                "total_records": len(local_15min_records),
+                "today_records": today_records,
+                "today_coverage_pct": round(today_records / 96 * 100, 1)
+            },
+            "next_daily_prediction": "6:00 AM"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to receive 15-min data: {e}")
+        raise HTTPException(status_code=422, detail=f"Data processing failed: {e}")
+
+
+# =========================
+# LEGACY: ESP32-Compatible Endpoint (Still runs ML - for backward compatibility)
+# =========================
 @app.post("/predict-esp32")
 async def predict_eto_esp32_compatible(data: dict):
-    """ESP32-compatible endpoint that handles parameter name differences"""
+    """
+    LEGACY ENDPOINT: ESP32-compatible endpoint that runs ML prediction
+    NOTE: For V5 architecture, use /receive-15min instead (no ML prediction)
+    This endpoint is kept for backward compatibility with V4
+    """
     try:
         converted_data = {
             "tmin": data.get("tmin"),
@@ -1558,7 +1855,7 @@ async def predict_eto_esp32_compatible(data: dict):
 
         # Store 15-min record locally for daily aggregation
         store_15min_record_locally(converted_data)
-        logger.info(f"Stored 15-min record locally (total: {len(local_15min_records)} records)")
+        logger.info(f"[LEGACY] Stored 15-min record locally (total: {len(local_15min_records)} records)")
 
         weather_input = WeatherInput(**converted_data)
         return await predict_eto_endpoint(weather_input)
