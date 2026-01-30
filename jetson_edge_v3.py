@@ -903,6 +903,29 @@ async def run_daily_prediction(target_date: date = None):
     else:
         logger.info(f"Using local data: {len(records)} records (sufficient coverage)")
 
+    # Calculate data completeness
+    expected_records = 96  # 24 hours × 4 records/hour
+    actual_records = len(records)
+    completeness_pct = round((actual_records / expected_records) * 100, 1)
+    missing_records = expected_records - actual_records
+
+    # Determine data quality status
+    if completeness_pct >= 90:
+        data_quality = "good"
+        data_quality_warning = None
+    elif completeness_pct >= 70:
+        data_quality = "acceptable"
+        data_quality_warning = f"Data incomplete: {actual_records}/96 records ({completeness_pct}%). Missing {missing_records} records (~{missing_records * 15} minutes of data)."
+    elif completeness_pct >= 50:
+        data_quality = "low"
+        data_quality_warning = f"Low data coverage: {actual_records}/96 records ({completeness_pct}%). Results may be less accurate."
+    else:
+        data_quality = "very_low"
+        data_quality_warning = f"Very low data coverage: {actual_records}/96 records ({completeness_pct}%). Results should be used with caution."
+
+    if data_quality_warning:
+        logger.warning(f"[DATA QUALITY] {data_quality_warning}")
+
     if not records:
         logger.warning(f"No 15-min records found for {target_date}")
         return None
@@ -951,13 +974,20 @@ async def run_daily_prediction(target_date: date = None):
 
         logger.info(f"DAILY ETo PREDICTION: {eto_prediction:.3f} mm/day (RAD: {estimated_rad:.2f} MJ/m2)")
 
-        # Store prediction result
+        # Store prediction result with data quality info
         daily_prediction_result["eto_prediction"] = {
             "eto_mm_day": round(float(eto_prediction), 3),
             "estimated_rad": round(float(estimated_rad), 3),
-            "date": target_date.isoformat()
+            "date": target_date.isoformat(),
+            "data_quality": data_quality,
+            "data_completeness_pct": completeness_pct,
+            "records_used": actual_records,
+            "records_expected": expected_records,
+            "data_quality_warning": data_quality_warning
         }
         daily_prediction_result["prediction_timestamp"] = datetime.now().isoformat()
+        daily_prediction_result["data_quality"] = data_quality
+        daily_prediction_result["data_completeness_pct"] = completeness_pct
 
         # Calculate irrigation recommendation
         if irrigation_config:
@@ -3520,6 +3550,12 @@ async def dashboard():
     else:
         current_etc = 0
 
+    # Data quality info for Daily ETo section
+    data_quality = daily_prediction_result.get("data_quality", "unknown")
+    data_completeness = daily_prediction_result.get("data_completeness_pct", 0)
+    data_quality_warning = daily_prediction_result.get("eto_prediction", {}).get("data_quality_warning") if daily_prediction_result.get("eto_prediction") else None
+    prediction_date = daily_prediction_result.get("last_prediction_date", "N/A")
+
     # Temperature: use cycle_data if available, otherwise use sensor_status
     current_temp_min = latest_data.get("input_data", {}).get("tmin", 0)
     current_temp_max = latest_data.get("input_data", {}).get("tmax", 0)
@@ -4527,8 +4563,17 @@ async def dashboard():
                     <div class="section-header">
                         <div class="section-icon green">🌿</div>
                         <span class="section-title" data-en="Daily Evapotranspiration" data-th="การคายระเหยรายวัน">Daily Evapotranspiration</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Updated at 6:01 AM" data-th="อัปเดตเวลา 6:01 น.">Updated at 6:01 AM</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">
+                            {prediction_date} •
+                            <span style="color: {'var(--success)' if data_quality == 'good' else 'var(--warning)' if data_quality in ['acceptable', 'low'] else 'var(--danger)' if data_quality == 'very_low' else 'var(--gray-400)'};">
+                                {data_completeness:.0f}% <span data-en="data" data-th="ข้อมูล">data</span>
+                            </span>
+                        </span>
                     </div>
+                    {f'''<div class="info-alert {'yellow' if data_quality in ['acceptable', 'low'] else 'red'}" style="margin-bottom: 12px; font-size: 0.75rem;">
+                        <span>⚠️</span>
+                        <span>{data_quality_warning}</span>
+                    </div>''' if data_quality_warning else ''}
                     <div class="daily-grid">
                         <div class="daily-card">
                             <div class="daily-icon" style="background: var(--primary-light);">💨</div>
