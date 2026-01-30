@@ -29,14 +29,8 @@ import os
 import math
 import asyncio
 import threading
-import subprocess
-import re
 
 VALVE_IP = os.getenv("VALVE_IP", "10.157.111.93")
-
-# Cloudflare Tunnel settings
-ENABLE_CLOUDFLARE_TUNNEL = os.getenv("ENABLE_TUNNEL", "true").lower() == "true"
-cloudflare_tunnel_url = None
 
 # Try to import dill, fallback to pickle
 try:
@@ -282,81 +276,6 @@ def load_settings_history():
     except Exception as e:
         logger.error(f"Failed to load settings history: {e}")
     return False
-
-# =========================
-# Cloudflare Tunnel Functions
-# =========================
-tunnel_process = None
-
-def start_cloudflare_tunnel():
-    """Start Cloudflare quick tunnel and capture the public URL"""
-    global cloudflare_tunnel_url, tunnel_process
-
-    if not ENABLE_CLOUDFLARE_TUNNEL:
-        logger.info("Cloudflare Tunnel disabled (set ENABLE_TUNNEL=true to enable)")
-        return None
-
-    try:
-        # Check if cloudflared is installed
-        result = subprocess.run(["cloudflared", "--version"], capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.warning("cloudflared not installed. Install with:")
-            logger.warning("  curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared")
-            logger.warning("  chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/")
-            return None
-
-        logger.info("Starting Cloudflare Tunnel...")
-
-        # Start tunnel process
-        tunnel_process = subprocess.Popen(
-            ["cloudflared", "tunnel", "--url", "http://localhost:8000"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
-
-        # Read output to find the tunnel URL
-        url_pattern = re.compile(r'https://[a-zA-Z0-9-]+\.trycloudflare\.com')
-
-        def read_tunnel_output():
-            global cloudflare_tunnel_url
-            for line in tunnel_process.stdout:
-                match = url_pattern.search(line)
-                if match:
-                    cloudflare_tunnel_url = match.group(0)
-                    logger.info("=" * 60)
-                    logger.info("🌐 CLOUDFLARE TUNNEL ACTIVE")
-                    logger.info(f"📱 Public URL: {cloudflare_tunnel_url}")
-                    logger.info("   Access from anywhere using this URL!")
-                    logger.info("=" * 60)
-                    break
-
-        # Start reading in background
-        tunnel_thread = threading.Thread(target=read_tunnel_output, daemon=True)
-        tunnel_thread.start()
-
-        # Wait a bit for URL to be captured
-        tunnel_thread.join(timeout=10)
-
-        return cloudflare_tunnel_url
-
-    except FileNotFoundError:
-        logger.warning("cloudflared not found. Tunnel feature disabled.")
-        logger.warning("Install cloudflared to enable remote access.")
-        return None
-    except Exception as e:
-        logger.error(f"Failed to start Cloudflare Tunnel: {e}")
-        return None
-
-def stop_cloudflare_tunnel():
-    """Stop the Cloudflare tunnel"""
-    global tunnel_process, cloudflare_tunnel_url
-    if tunnel_process:
-        tunnel_process.terminate()
-        tunnel_process = None
-        cloudflare_tunnel_url = None
-        logger.info("Cloudflare Tunnel stopped")
 
 def record_settings_change(change_type: str, details: str = None):
     """
@@ -1353,10 +1272,6 @@ async def lifespan(app: FastAPI):
     scheduler_thread.start()
     logger.info("6:01 AM daily scheduler started (growth day + ETo prediction)")
 
-    # Step 7: Start Cloudflare Tunnel (if enabled)
-    logger.info("[STARTUP] Step 7: Starting Cloudflare Tunnel...")
-    start_cloudflare_tunnel()
-
     logger.info("=" * 60)
     logger.info("JETSON EDGE V3 - STARTUP COMPLETE")
     logger.info(f"  Farm: {irrigation_config.get('farm_name', 'Unknown')}")
@@ -1364,10 +1279,6 @@ async def lifespan(app: FastAPI):
     logger.info(f"  Growth Stage: {irrigation_config.get('crop_growth_stage', 'Unknown')}")
     logger.info(f"  Local Records: {len(local_15min_records)}")
     logger.info(f"  Next daily tasks: 6:01 AM")
-    if cloudflare_tunnel_url:
-        logger.info(f"  📱 Public URL: {cloudflare_tunnel_url}")
-    else:
-        logger.info(f"  Local URL: http://localhost:8000")
     logger.info("=" * 60)
 
     yield
@@ -1376,10 +1287,6 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("JETSON EDGE V3 - SHUTTING DOWN")
     logger.info("=" * 60)
-
-    # Stop Cloudflare Tunnel
-    logger.info("[SHUTDOWN] Stopping Cloudflare Tunnel...")
-    stop_cloudflare_tunnel()
 
     # Save all state before shutdown
     logger.info("[SHUTDOWN] Saving all state to disk...")
@@ -3186,44 +3093,6 @@ async def raw_sensor_data_page():
                 box-shadow: 0 0 1px rgba(0,0,0,0.3);
             }}
 
-            /* Public URL Badge */
-            .public-url-badge {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 6px 12px;
-                border-radius: 20px;
-                color: white;
-                font-size: 0.75rem;
-                font-weight: 500;
-                margin-right: 12px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-            }}
-            .public-url-badge:hover {{
-                transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-            }}
-            .public-url-badge .url-icon {{
-                font-size: 0.9rem;
-            }}
-            .public-url-badge .url-text {{
-                max-width: 200px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }}
-            .public-url-badge.offline {{
-                background: var(--gray-400);
-                cursor: default;
-                box-shadow: none;
-            }}
-            .public-url-badge.offline:hover {{
-                transform: none;
-            }}
-
             /* Stats Grid */
             .stats-grid {{
                 display: grid;
@@ -3495,19 +3364,56 @@ async def health():
         "influxdb_recovery": INFLUXDB_AVAILABLE,
         "last_processed_timestamp": last_processed_timestamp,
         "growth_day": growth_stage_config["current_day"],
-        "sensors_online": sum(1 for s in sensor_status.values() if s["online"]),
-        "public_url": cloudflare_tunnel_url
+        "sensors_online": sum(1 for s in sensor_status.values() if s["online"])
     }
 
-@app.get("/public-url")
-async def get_public_url():
-    """Get the Cloudflare Tunnel public URL"""
+# =========================
+# Daily Prediction Endpoints
+# =========================
+@app.get("/daily-prediction")
+async def get_daily_prediction():
+    """Get current daily prediction result"""
     return {
-        "public_url": cloudflare_tunnel_url,
-        "local_url": "http://localhost:8000",
-        "tunnel_enabled": ENABLE_CLOUDFLARE_TUNNEL,
-        "tunnel_active": cloudflare_tunnel_url is not None
+        "last_prediction_date": daily_prediction_result.get("last_prediction_date"),
+        "prediction_timestamp": daily_prediction_result.get("prediction_timestamp"),
+        "data_source": daily_prediction_result.get("data_source"),
+        "eto_prediction": daily_prediction_result.get("eto_prediction"),
+        "irrigation_recommendation": daily_prediction_result.get("irrigation_recommendation"),
+        "daily_aggregates": daily_prediction_result.get("daily_aggregates")
     }
+
+@app.post("/daily-prediction/trigger")
+async def trigger_daily_prediction(target_date: str = None):
+    """
+    Manually trigger daily prediction (for testing)
+    Usage: POST /daily-prediction/trigger?target_date=2025-01-30
+    If no date provided, uses yesterday
+    """
+    try:
+        if target_date:
+            from datetime import datetime
+            pred_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        else:
+            pred_date = date.today() - timedelta(days=1)
+
+        logger.info(f"Manual trigger: Running daily prediction for {pred_date}")
+        result = await run_daily_prediction(pred_date)
+
+        if result:
+            return {
+                "status": "success",
+                "message": f"Daily prediction completed for {pred_date}",
+                "result": daily_prediction_result
+            }
+        else:
+            return {
+                "status": "failed",
+                "message": f"No data available for {pred_date}",
+                "local_records": len(local_15min_records)
+            }
+    except Exception as e:
+        logger.error(f"Manual trigger failed: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/model-info")
 async def model_info():
@@ -3579,10 +3485,22 @@ async def dashboard():
             history_data['rainfall'].append(round(record.get('rain_mm_15', 0) or 0, 2))
             history_data['vpd'].append(round(record.get('vpd_avg_15', 0) or 0, 2))
 
-    # Current values - try cycle_data first, then fall back to sensor_status (from /receive-15min)
-    current_eto = latest_data.get("eto_mm_day", 0)
-    current_etc = latest_irrigation.get("etc_mm_day", 0) if latest_irrigation else 0
-    current_rad = latest_data.get("estimated_rad", 0)
+    # Daily ETo/ETc/Rn values - use daily_prediction_result (updated at 6:01 AM)
+    # Fall back to real-time cycle_data if no daily prediction exists
+    if daily_prediction_result.get("eto_prediction"):
+        current_eto = daily_prediction_result["eto_prediction"].get("eto_mm_day", 0)
+        current_rad = daily_prediction_result["eto_prediction"].get("estimated_rad", 0)
+    else:
+        current_eto = latest_data.get("eto_mm_day", 0)
+        current_rad = latest_data.get("estimated_rad", 0)
+
+    # ETc from daily irrigation recommendation, or calculate from ETo × Kc
+    if daily_prediction_result.get("irrigation_recommendation"):
+        current_etc = daily_prediction_result["irrigation_recommendation"].get("etc_mm_day", 0)
+    elif latest_irrigation:
+        current_etc = latest_irrigation.get("etc_mm_day", 0)
+    else:
+        current_etc = 0
 
     # Temperature: use cycle_data if available, otherwise use sensor_status
     current_temp_min = latest_data.get("input_data", {}).get("tmin", 0)
@@ -3619,8 +3537,8 @@ async def dashboard():
     # Solar radiation from sensor (W/m²) - real-time from ESP32
     current_solar_wm2 = get_current_solar_radiation()
 
-    # Rn_est from daily prediction (MJ/m²/day) - updated at 6:00 AM
-    current_rn_est = daily_prediction_result.get("eto_prediction", {}).get("estimated_rad", 0) if daily_prediction_result.get("eto_prediction") else current_rad
+    # Rn_est - already extracted above from daily_prediction_result or fallback
+    current_rn_est = current_rad  # Use the value set earlier
 
     irrigation_volume = latest_irrigation.get("irrigation_volume_l_per_tree", 0)
     irrigation_needed = latest_irrigation.get("irrigation_needed", False)
@@ -4427,10 +4345,6 @@ async def dashboard():
                             <div class="datetime-date">{datetime.now().strftime("%A, %d %B %Y")}</div>
                             <div class="datetime-time">{datetime.now().strftime("%H:%M")} • <span data-en="Auto-refresh 30s" data-th="รีเฟรชอัตโนมัติ 30 วินาที">Auto-refresh 30s</span></div>
                         </div>
-                        <div class="public-url-badge {'offline' if not cloudflare_tunnel_url else ''}" id="public-url-badge" onclick="copyPublicUrl()" title="{'Click to copy' if cloudflare_tunnel_url else 'Tunnel offline'}">
-                            <span class="url-icon">{'🌐' if cloudflare_tunnel_url else '📴'}</span>
-                            <span class="url-text" id="public-url-text">{cloudflare_tunnel_url if cloudflare_tunnel_url else 'Local Only'}</span>
-                        </div>
                         <div class="lang-toggle">
                             <button class="lang-btn active" onclick="setLanguage('en')" id="lang-en">
                                 <img src="https://flagcdn.com/w20/gb.png" alt="EN" class="lang-flag">
@@ -4749,48 +4663,6 @@ async def dashboard():
                     noData: "ไม่มีข้อมูล"
                 }}
             }};
-
-            // Copy public URL to clipboard
-            function copyPublicUrl() {{
-                const urlText = document.getElementById('public-url-text').textContent;
-                if (urlText && urlText !== 'Local Only') {{
-                    navigator.clipboard.writeText(urlText).then(() => {{
-                        const badge = document.getElementById('public-url-badge');
-                        const originalText = document.getElementById('public-url-text').textContent;
-                        document.getElementById('public-url-text').textContent = 'Copied!';
-                        setTimeout(() => {{
-                            document.getElementById('public-url-text').textContent = originalText;
-                        }}, 1500);
-                    }});
-                }}
-            }}
-
-            // Update public URL periodically
-            async function updatePublicUrl() {{
-                try {{
-                    const response = await fetch('/public-url');
-                    const data = await response.json();
-                    const badge = document.getElementById('public-url-badge');
-                    const urlText = document.getElementById('public-url-text');
-
-                    if (data.public_url) {{
-                        badge.classList.remove('offline');
-                        badge.querySelector('.url-icon').textContent = '🌐';
-                        urlText.textContent = data.public_url;
-                        badge.title = 'Click to copy';
-                    }} else {{
-                        badge.classList.add('offline');
-                        badge.querySelector('.url-icon').textContent = '📴';
-                        urlText.textContent = 'Local Only';
-                        badge.title = 'Tunnel offline';
-                    }}
-                }} catch (err) {{
-                    console.log('Failed to update public URL:', err);
-                }}
-            }}
-
-            // Check for public URL every 30 seconds
-            setInterval(updatePublicUrl, 30000);
 
             function setLanguage(lang) {{
                 // Save to localStorage
