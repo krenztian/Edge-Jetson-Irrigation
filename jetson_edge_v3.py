@@ -2440,8 +2440,24 @@ async def receive_15min_data(data: dict):
             "settings": get_current_settings_for_record()
         }
 
-        # Store locally
-        local_15min_records.append(record)
+        # Check for duplicate before storing (prevent duplicates from ESP32 retries or recovery overlap)
+        record_ts = record["timestamp"][:19] if record.get("timestamp") else None
+        is_duplicate = False
+
+        if record_ts:
+            for existing in local_15min_records:
+                existing_ts = (existing.get("timestamp") or existing.get("received_at", ""))[:19]
+                if existing_ts == record_ts:
+                    is_duplicate = True
+                    logger.debug(f"Skipping duplicate record with timestamp: {record_ts}")
+                    break
+
+        # Store locally only if not duplicate
+        if not is_duplicate:
+            local_15min_records.append(record)
+            logger.info(f"Stored 15-min record: {record_ts}")
+        else:
+            logger.info(f"Duplicate record skipped: {record_ts}")
 
         # Get optional sensor health status from ESP32
         sensor_health = data.get("sensor_health", {})
@@ -2488,22 +2504,24 @@ async def receive_15min_data(data: dict):
         today = date.today()
         today_records = len(get_local_15min_records_for_date(today))
 
-        logger.info(f"[RECEIVE-15MIN] Stored record #{record['aggregate_number']} | "
-                   f"T:{record['temp_min_15']}-{record['temp_max_15']}°C | "
-                   f"RH:{record['rh_avg_15']}% | Rain:{record['rain_mm_15']}mm | "
-                   f"Today: {today_records}/96 records")
+        if not is_duplicate:
+            logger.info(f"[RECEIVE-15MIN] Stored record #{record['aggregate_number']} | "
+                       f"T:{record['temp_min_15']}-{record['temp_max_15']}°C | "
+                       f"RH:{record['rh_avg_15']}% | Rain:{record['rain_mm_15']}mm | "
+                       f"Today: {today_records}/96 records")
+
+            # Auto-save 15-min records to disk (every record to ensure no data loss)
+            save_15min_records()
 
         # Build sensor status summary for response
         sensors_online = sum(1 for s in sensor_status.values() if s.get("online", False))
         sensors_total = len(sensor_status)
 
-        # Auto-save 15-min records to disk (every record to ensure no data loss)
-        save_15min_records()
-
         return {
-            "status": "success",
-            "message": "15-min data received and stored",
-            "record_stored": {
+            "status": "success" if not is_duplicate else "duplicate_skipped",
+            "message": "15-min data received and stored" if not is_duplicate else f"Duplicate record skipped (timestamp: {record_ts})",
+            "is_duplicate": is_duplicate,
+            "record_stored": None if is_duplicate else {
                 "timestamp": record["timestamp"],
                 "aggregate_number": record["aggregate_number"],
                 "temp_range": f"{record['temp_min_15']}-{record['temp_max_15']}°C",
@@ -2515,14 +2533,14 @@ async def receive_15min_data(data: dict):
                 "total_records": len(local_15min_records),
                 "today_records": today_records,
                 "today_coverage_pct": round(today_records / 96 * 100, 1),
-                "persisted_to_disk": True
+                "persisted_to_disk": not is_duplicate
             },
             "sensor_status": {
                 "online_count": sensors_online,
                 "total_count": sensors_total,
                 "details": {name: s.get("online", False) for name, s in sensor_status.items()}
             },
-            "next_daily_prediction": "6:00 AM"
+            "next_daily_prediction": "6:01 AM"
         }
 
     except Exception as e:
