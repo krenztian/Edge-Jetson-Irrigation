@@ -435,25 +435,36 @@ influx_recovery = InfluxDBRecovery()
 # =========================
 # Local 15-min Record Storage Functions
 # =========================
+def round2(value):
+    """Round value to 2 decimal places, handling None"""
+    if value is None:
+        return None
+    return round(float(value), 2)
+
 def store_15min_record_locally(data: dict):
     """
     Store a 15-minute aggregate record locally for daily aggregation
     Called when ESP32 sends data to /predict-esp32
+    All float values rounded to 2 decimals
     """
+    tmin = data.get("tmin")
+    tmax = data.get("tmax")
+    temp_avg = round2((tmin + tmax) / 2) if tmin and tmax else None
+
     record = {
         "timestamp": data.get("timestamp", datetime.now().isoformat()),
         "received_at": datetime.now().isoformat(),
-        "temp_min_15": data.get("tmin"),
-        "temp_max_15": data.get("tmax"),
-        "temp_avg_15": (data.get("tmin", 0) + data.get("tmax", 0)) / 2 if data.get("tmin") and data.get("tmax") else None,
-        "rh_avg_15": data.get("humidity"),
-        "pressure_avg_15": data.get("pressure"),
-        "wind_avg_15": data.get("wind_speed"),
-        "wind_max_15": data.get("wind_speed"),  # Same as avg for now
-        "solar_avg_15": None,  # Not directly available
-        "sunshine_min_15": data.get("sunshine_hours", 0) * 60 / 96 if data.get("sunshine_hours") else 0,  # Estimate per 15-min
-        "rain_mm_15": data.get("rainfall_mm", 0),
-        "vpd_avg_15": data.get("vpd"),
+        "temp_min_15": round2(tmin),
+        "temp_max_15": round2(tmax),
+        "temp_avg_15": temp_avg,
+        "rh_avg_15": round2(data.get("humidity")),
+        "pressure_avg_15": round2(data.get("pressure")),
+        "wind_avg_15": round2(data.get("wind_speed")),
+        "wind_max_15": round2(data.get("wind_speed")),  # Same as avg for now
+        "solar_avg_15": round2(data.get("solar_radiation")),
+        "sunshine_min_15": data.get("sunshine_minutes", 0),  # Integer minutes
+        "rain_mm_15": round2(data.get("rainfall_mm", 0)),
+        "vpd_avg_15": round2(data.get("vpd")),
         "device": data.get("device_id", "ESP32")
     }
 
@@ -720,7 +731,14 @@ def load_models():
             "plant_spacing": 10.0,
             "num_sprinklers": 2,
             "farm_name": "ESP32 Farm",
-            "canopy_radius": 3.0  # NEW: Canopy radius in meters
+            "canopy_radius": 3.0,
+            # C1: Plant Maturity Stage
+            "plant_maturity": "Mature",  # Young, Middle, Mature
+            # C2: Wetted percentage
+            "wetted_pct": 50.0,  # Default for 2 sprinklers
+            # C3: Trunk buffer
+            "trunk_buffer_enabled": False,
+            "trunk_buffer_radius": 0.0
         }
         logger.info("Default irrigation config set")
 
@@ -862,7 +880,14 @@ class IrrigationConfig(BaseModel):
     plant_spacing: float = 10.0
     num_sprinklers: int = 2
     farm_name: str = "Default Farm"
-    canopy_radius: float = 3.0  # NEW: Canopy radius in meters
+    canopy_radius: float = 3.0  # Canopy radius in meters
+    # C1: Plant Maturity Stage - affects effective root zone (Zr) and MAD logic
+    plant_maturity: str = "Mature"  # Young, Middle, Mature
+    # C2: Wetted percentage - based on sprinkler coverage
+    wetted_pct: float = 50.0  # Default for 2 sprinklers (1=25%, 2=50%, 3=75%, 4=85%)
+    # C3: Trunk buffer area - option to exclude area near trunk
+    trunk_buffer_enabled: bool = False
+    trunk_buffer_radius: float = 0.0  # 0 to 0.7m
 
 class GrowthStageConfig(BaseModel):
     start_day: int  # Day 1-365 to set as current
@@ -898,12 +923,89 @@ class IrrigationCalculator:
         self.last_irrigation_time = None
         self.soil_depth = 0.5
 
+        # C1: Effective Root Zone (Zr) by Plant Maturity Stage
+        self.ZR_BY_MATURITY = {
+            "Young": 0.30,   # 30cm effective root zone
+            "Middle": 0.45,  # 45cm effective root zone
+            "Mature": 0.60   # 60cm effective root zone
+        }
+
+        # C1: MAD Irrigation Ratios by Growth Stage (for Middle/Mature plants)
+        self.MAD_IR_BY_STAGE = {
+            "Flowering & fruit setting (0-45 Days)": 0.40,
+            "Early fruit growth (46-75 days)": 0.45,
+            "Fruit growth (76-110 days)": 0.55,
+            "Fruit Maturity (111-140 days)": 0.60,
+            "Vegetative Growth (141-290 days)": 0.70,
+            "Floral initiation (291-320 days)": 0.50,
+            "Floral development (321-365 days)": 0.45
+        }
+
+        # C2: Default wetted percentage by number of sprinklers
+        self.WETTED_PCT_BY_SPRINKLERS = {
+            1: 25.0,
+            2: 50.0,
+            3: 75.0,
+            4: 85.0
+        }
+
     def get_swhc(self, soil_type):
         swhc_values = {
             'Sandy Loam': 120, 'Loamy Sand': 80, 'Loam': 160,
             'Sandy Clay Loam': 110, 'Clay Loam': 160
         }
         return swhc_values.get(soil_type, 160)
+
+    def get_effective_root_zone(self, plant_maturity):
+        """C1: Get Zr (effective root zone depth in meters) based on plant maturity"""
+        return self.ZR_BY_MATURITY.get(plant_maturity, 0.60)  # Default to Mature
+
+    def get_mad_ir(self, crop_growth_stage, plant_maturity):
+        """C1: Get MAD Irrigation Ratio based on growth stage and plant maturity
+        Young plants: Fixed p=0.5 (RAW = TAW × 0.5)
+        Middle/Mature plants: MAD varies by growth stage
+        """
+        if plant_maturity == "Young":
+            return 0.5  # Fixed for young plants
+        return self.MAD_IR_BY_STAGE.get(crop_growth_stage, 0.5)
+
+    def get_default_wetted_pct(self, num_sprinklers):
+        """C2: Get default wetted percentage based on number of sprinklers"""
+        return self.WETTED_PCT_BY_SPRINKLERS.get(num_sprinklers, 50.0)
+
+    def calculate_root_and_wetted_area(self, canopy_radius, trunk_buffer_enabled, trunk_buffer_radius, wetted_pct):
+        """C3: Calculate root area and wetted area with trunk buffer consideration
+        A_canopy = π × canopy_radius²
+        A_buffer = π × trunk_buffer_radius² (capped at 20% of canopy area)
+        A_root = A_canopy - A_buffer
+        A_wetted = A_root × (wetted_pct / 100)
+        """
+        canopy_area = math.pi * canopy_radius ** 2
+
+        # Calculate trunk buffer area if enabled
+        buffer_area = 0
+        if trunk_buffer_enabled and trunk_buffer_radius > 0:
+            buffer_area = math.pi * trunk_buffer_radius ** 2
+            # Cap buffer at 20% of canopy area
+            max_buffer = canopy_area * 0.20
+            if buffer_area > max_buffer:
+                buffer_area = max_buffer
+                logger.info(f"Trunk buffer capped at 20% of canopy: {max_buffer:.2f}m²")
+
+        # Calculate root area (canopy minus buffer)
+        root_area = canopy_area - buffer_area
+
+        # Calculate wetted area
+        wetted_area = root_area * (wetted_pct / 100)
+
+        logger.info(f"Area calculation: Canopy={canopy_area:.2f}m², Buffer={buffer_area:.2f}m², Root={root_area:.2f}m², Wetted={wetted_area:.2f}m² ({wetted_pct}%)")
+
+        return {
+            "canopy_area": round(canopy_area, 2),
+            "buffer_area": round(buffer_area, 2),
+            "root_area": round(root_area, 2),
+            "wetted_area": round(wetted_area, 2)
+        }
 
     def get_kc(self, crop_type, crop_growth_stage):
         kc_values = {
@@ -1008,18 +1110,42 @@ class IrrigationCalculator:
         logger.info("Irrigation completed - deficit reset to 0")
 
     def calculate_irrigation_recommendation(self, eto_mm_day, config, rainfall_mm=0.0, vpd=None):
-        """Enhanced irrigation calculation with VPD checking"""
+        """Enhanced irrigation calculation with C1/C2/C3 updates:
+        - C1: Plant Maturity Stage (affects Zr and MAD)
+        - C2: Wetted % field
+        - C3: Trunk Buffer Area option
+        """
         swhc = self.get_swhc(config.soil_type)
 
-        # Use canopy_radius if available
-        canopy_radius = getattr(config, 'canopy_radius', None) or config.__dict__.get('canopy_radius')
-        wetted_area = self.calculate_wetted_area(
-            config.plant_spacing, config.emitter_rate, config.num_sprinklers, canopy_radius
-        )
+        # Get config values with defaults
+        canopy_radius = getattr(config, 'canopy_radius', 3.0) or 3.0
+        plant_maturity = getattr(config, 'plant_maturity', 'Mature') or 'Mature'
+        wetted_pct = getattr(config, 'wetted_pct', 50.0) or 50.0
+        trunk_buffer_enabled = getattr(config, 'trunk_buffer_enabled', False) or False
+        trunk_buffer_radius = getattr(config, 'trunk_buffer_radius', 0.0) or 0.0
 
-        taw = swhc * self.soil_depth
-        mad = 0.3
-        RAW = taw * mad
+        # C3: Calculate areas with trunk buffer consideration
+        area_calc = self.calculate_root_and_wetted_area(
+            canopy_radius, trunk_buffer_enabled, trunk_buffer_radius, wetted_pct
+        )
+        wetted_area = area_calc["wetted_area"]
+
+        # C1: Get effective root zone based on plant maturity
+        zr = self.get_effective_root_zone(plant_maturity)
+
+        # C1: Calculate TAW using Zr instead of fixed soil_depth
+        # TAW = SWHC (mm/m) × Zr (m)
+        taw = swhc * zr
+
+        # C1: Calculate RAW with MAD based on plant maturity and growth stage
+        # Young: p = 0.5 (fixed)
+        # Middle/Mature: p varies by growth stage
+        p = 0.5  # Depletion fraction
+        RAW = taw * p
+
+        # C1: Calculate MAD threshold for irrigation trigger
+        mad_ir = self.get_mad_ir(config.crop_growth_stage, plant_maturity)
+        MAD_TI = RAW * mad_ir  # Management Allowable Depletion for Trigger Irrigation
 
         kc = self.get_kc(config.crop_type, config.crop_growth_stage)
         etc = eto_mm_day * kc
@@ -1040,10 +1166,13 @@ class IrrigationCalculator:
             if vpd_status["status"] == "high":
                 vpd_warning = f"High VPD detected: {vpd_status['message']}"
 
-        if current_deficit >= RAW:
-            irrigation_volume = self.calculate_irrigation_volume(
-                current_deficit, wetted_area, irrigation_efficiency
-            )
+        # Irrigation decision based on MAD_TI threshold
+        if current_deficit >= MAD_TI:
+            # C3 Formula: Net irrigation (L/tree) = Net_depth (mm) × A_wetted (m²)
+            # Net_depth = current_deficit (mm converted to liters per m²)
+            # Volume (L) = deficit (mm) × area (m²) = deficit × area (since 1mm = 1L/m²)
+            net_irrigation = current_deficit * wetted_area  # Liters per tree
+            irrigation_volume = net_irrigation / irrigation_efficiency  # Gross volume
             irrigation_time_seconds = self.calculate_irrigation_time(
                 irrigation_volume, config.emitter_rate, config.num_sprinklers
             )
@@ -1056,12 +1185,14 @@ class IrrigationCalculator:
             irrigation_time_seconds = 0
             self.daily_irrigation_applied = 0
             self.previous_deficit = current_deficit
-            recommendation = f"No pump activation needed. Deficit: {current_deficit:.1f}mm (Threshold: {RAW:.1f}mm)"
+            recommendation = f"No pump activation needed. Deficit: {current_deficit:.1f}mm (Threshold: {MAD_TI:.1f}mm)"
             irrigation_needed = False
 
         # Add VPD override suggestion
         if vpd_status and vpd_status["status"] == "high" and not irrigation_needed:
             recommendation += f" | VPD Warning: {vpd_status['action']}"
+
+        logger.info(f"Irrigation calc: Zr={zr}m, TAW={taw:.1f}mm, RAW={RAW:.1f}mm, MAD_TI={MAD_TI:.1f}mm, Deficit={current_deficit:.1f}mm")
 
         return {
             "irrigation_needed": irrigation_needed,
@@ -1071,6 +1202,7 @@ class IrrigationCalculator:
             "etc_mm_day": round(etc, 3),
             "deficit_mm": round(current_deficit, 2),
             "RAW_threshold_mm": round(RAW, 2),
+            "MAD_TI_threshold_mm": round(MAD_TI, 2),
             "recommendation": recommendation,
             "rainfall_mm": round(rainfall_mm, 2),
             "effective_rainfall_mm": round(effective_rainfall, 2),
@@ -1082,8 +1214,18 @@ class IrrigationCalculator:
                 "growth_day": growth_stage_config["current_day"],
                 "soil_type": config.soil_type,
                 "kc": round(kc, 2),
-                "wetted_area_m2": round(wetted_area, 2),
-                "canopy_radius_m": canopy_radius
+                "plant_maturity": plant_maturity,
+                "effective_root_zone_m": zr,
+                "taw_mm": round(taw, 2),
+                "mad_ir": mad_ir,
+                "wetted_pct": wetted_pct,
+                "canopy_radius_m": canopy_radius,
+                "canopy_area_m2": area_calc["canopy_area"],
+                "buffer_area_m2": area_calc["buffer_area"],
+                "root_area_m2": area_calc["root_area"],
+                "wetted_area_m2": area_calc["wetted_area"],
+                "trunk_buffer_enabled": trunk_buffer_enabled,
+                "trunk_buffer_radius_m": trunk_buffer_radius
             }
         }
 
@@ -2277,38 +2419,38 @@ async def dashboard():
 
     current_rainfall = get_current_rainfall()
 
-    # Prepare data for charts
+    # Prepare data for charts - use local_15min_records (from /receive-15min)
     history_data = {
-        'labels': [], 'humidity': [], 'wind_speed': [], 'sunshine_hours': [],
-        'estimated_rad': [], 'temp_min': [], 'temp_max': [], 'eto_values': [],
-        'etc_values': [], 'rainfall': [], 'vpd': []
+        'labels': [], 'humidity': [], 'wind_speed': [], 'sunshine_min': [],
+        'solar_wm2': [], 'temp_min': [], 'temp_max': [], 'pressure': [],
+        'rainfall': [], 'vpd': []
     }
 
-    for pred in list(prediction_history)[-12:]:
-        timestamp = pred.get('timestamp', '')
+    # Get last 12 records from local_15min_records (most recent 15-min data)
+    recent_records = list(local_15min_records)[-12:]
+    for record in recent_records:
+        timestamp = record.get('timestamp', record.get('received_at', ''))
         if timestamp:
             try:
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                # Handle different timestamp formats
+                if 'T' in str(timestamp):
+                    dt = datetime.fromisoformat(str(timestamp).replace('Z', '').split('+')[0])
+                else:
+                    dt = datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M:%S")
                 formatted_time = dt.strftime('%H:%M')
             except:
-                formatted_time = timestamp[-8:-3] if len(timestamp) > 8 else timestamp
+                formatted_time = str(timestamp)[-8:-3] if len(str(timestamp)) > 8 else str(timestamp)
 
             history_data['labels'].append(formatted_time)
-            input_data = pred.get('input_data', {})
-            history_data['humidity'].append(input_data.get('humidity', 0))
-            history_data['wind_speed'].append(input_data.get('wind_speed', 0))
-            history_data['sunshine_hours'].append(input_data.get('sunshine_hours', 0))
-            history_data['estimated_rad'].append(pred.get('estimated_rad', 0))
-            history_data['temp_min'].append(input_data.get('tmin', 0))
-            history_data['temp_max'].append(input_data.get('tmax', 0))
-            history_data['eto_values'].append(pred.get('eto_mm_day', 0))
-            history_data['rainfall'].append(input_data.get('rainfall_mm', 0))
-            history_data['vpd'].append(input_data.get('vpd', 0) or 0)
-
-            if latest_irrigation:
-                history_data['etc_values'].append(latest_irrigation.get('etc_mm_day', 0))
-            else:
-                history_data['etc_values'].append(0)
+            history_data['humidity'].append(round(record.get('rh_avg_15', 0) or 0, 2))
+            history_data['wind_speed'].append(round(record.get('wind_avg_15', 0) or 0, 2))
+            history_data['sunshine_min'].append(record.get('sunshine_min_15', 0) or 0)
+            history_data['solar_wm2'].append(round(record.get('solar_avg_15', 0) or 0, 2))
+            history_data['temp_min'].append(round(record.get('temp_min_15', 0) or 0, 2))
+            history_data['temp_max'].append(round(record.get('temp_max_15', 0) or 0, 2))
+            history_data['pressure'].append(round(record.get('pressure_avg_15', 0) or 0, 2))
+            history_data['rainfall'].append(round(record.get('rain_mm_15', 0) or 0, 2))
+            history_data['vpd'].append(round(record.get('vpd_avg_15', 0) or 0, 2))
 
     # Current values - try cycle_data first, then fall back to sensor_status (from /receive-15min)
     current_eto = latest_data.get("eto_mm_day", 0)
@@ -2742,14 +2884,14 @@ async def dashboard():
             <div class="trends-section">
                 <div class="section-title">Historical Trends</div>
                 <div class="trends-grid">
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon humidity-icon">H</div><div class="trend-title">Humidity Trend</div></div><div class="chart-container"><canvas id="humidityChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon wind-icon">W</div><div class="trend-title">Wind Speed Trend</div></div><div class="chart-container"><canvas id="windChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon sun-icon">S</div><div class="trend-title">Sunshine Trend</div></div><div class="chart-container"><canvas id="sunshineChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon radiation-icon">R</div><div class="trend-title">Solar Radiation</div></div><div class="chart-container"><canvas id="radiationChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon rain-icon">R</div><div class="trend-title">Rainfall Trend</div></div><div class="chart-container"><canvas id="rainfallChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#1976D2;">T</div><div class="trend-title">Temperature Trend</div></div><div class="chart-container"><canvas id="temperatureChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon vpd-icon">V</div><div class="trend-title">VPD Trend</div></div><div class="chart-container"><canvas id="vpdChart"></canvas></div></div>
-                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#42a5f5;">E</div><div class="trend-title">ETo Trend</div></div><div class="chart-container"><canvas id="etoChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon humidity-icon">H</div><div class="trend-title">Humidity (15-min)</div></div><div class="chart-container"><canvas id="humidityChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon wind-icon">W</div><div class="trend-title">Wind Speed (15-min)</div></div><div class="chart-container"><canvas id="windChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon sun-icon">☀</div><div class="trend-title">Sunshine (min)</div></div><div class="chart-container"><canvas id="sunshineChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#FF9800;">☼</div><div class="trend-title">Solar (W/m²)</div></div><div class="chart-container"><canvas id="radiationChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon rain-icon">🌧</div><div class="trend-title">Rainfall (mm)</div></div><div class="chart-container"><canvas id="rainfallChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#1976D2;">T</div><div class="trend-title">Temperature (°C)</div></div><div class="chart-container"><canvas id="temperatureChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon vpd-icon">V</div><div class="trend-title">VPD (kPa)</div></div><div class="chart-container"><canvas id="vpdChart"></canvas></div></div>
+                    <div class="trend-card"><div class="trend-header"><div class="trend-icon" style="background:#9c27b0;">P</div><div class="trend-title">Pressure (hPa)</div></div><div class="chart-container"><canvas id="pressureChart"></canvas></div></div>
                 </div>
             </div>
         </div>
@@ -2809,12 +2951,12 @@ async def dashboard():
 
             new Chart(document.getElementById('humidityChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['humidity']}, borderColor: '#42a5f5', backgroundColor: 'rgba(66, 165, 245, 0.1)', fill: true }}] }} }});
             new Chart(document.getElementById('windChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['wind_speed']}, borderColor: '#66bb6a', backgroundColor: 'rgba(102, 187, 106, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('sunshineChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['sunshine_hours']}, borderColor: '#ffa726', backgroundColor: 'rgba(255, 167, 38, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('radiationChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['estimated_rad']}, borderColor: '#ef5350', backgroundColor: 'rgba(239, 83, 80, 0.1)', fill: true }}] }} }});
+            new Chart(document.getElementById('sunshineChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['sunshine_min']}, borderColor: '#ffa726', backgroundColor: 'rgba(255, 167, 38, 0.1)', fill: true }}] }} }});
+            new Chart(document.getElementById('radiationChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['solar_wm2']}, borderColor: '#ef5350', backgroundColor: 'rgba(239, 83, 80, 0.1)', fill: true }}] }} }});
             new Chart(document.getElementById('rainfallChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['rainfall']}, borderColor: '#2196f3', backgroundColor: 'rgba(33, 150, 243, 0.1)', fill: true }}] }} }});
             new Chart(document.getElementById('temperatureChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ label: 'Max', data: {history_data['temp_max']}, borderColor: '#ef5350', fill: false }}, {{ label: 'Min', data: {history_data['temp_min']}, borderColor: '#42a5f5', fill: false }}] }}, options: {{ ...chartConfig.options, plugins: {{ legend: {{ display: true }} }} }} }});
             new Chart(document.getElementById('vpdChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['vpd']}, borderColor: '#ff5722', backgroundColor: 'rgba(255, 87, 34, 0.1)', fill: true }}] }} }});
-            new Chart(document.getElementById('etoChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['eto_values']}, borderColor: '#42a5f5', backgroundColor: 'rgba(66, 165, 245, 0.1)', fill: true }}] }} }});
+            new Chart(document.getElementById('pressureChart').getContext('2d'), {{ ...chartConfig, data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['pressure']}, borderColor: '#9c27b0', backgroundColor: 'rgba(156, 39, 176, 0.1)', fill: true }}] }} }});
         </script>
     </body>
     </html>
@@ -2897,10 +3039,10 @@ async def configuration_page():
                     <div class="config-item"><div class="config-item-label">Crop Type</div><div class="config-item-value">{current_config.get('crop_type', 'Not Set')}</div></div>
                     <div class="config-item"><div class="config-item-label">Growth Day</div><div class="config-item-value">Day {current_day}</div></div>
                     <div class="config-item"><div class="config-item-label">Growth Stage</div><div class="config-item-value">{current_config.get('crop_growth_stage', 'Not Set')[:20]}...</div></div>
+                    <div class="config-item"><div class="config-item-label">Plant Maturity</div><div class="config-item-value">{current_config.get('plant_maturity', 'Mature')}</div></div>
                     <div class="config-item"><div class="config-item-label">Soil Type</div><div class="config-item-value">{current_config.get('soil_type', 'Not Set')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Irrigation Type</div><div class="config-item-value">{current_config.get('irrigation_type', 'Not Set')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Emitter Rate</div><div class="config-item-value">{current_config.get('emitter_rate', 'Not Set')} L/h</div></div>
                     <div class="config-item"><div class="config-item-label">Canopy Radius</div><div class="config-item-value">{current_config.get('canopy_radius', 3.0)} m</div></div>
+                    <div class="config-item"><div class="config-item-label">Wetted %</div><div class="config-item-value">{current_config.get('wetted_pct', 50.0)}%</div></div>
                 </div>
             </div>
 
@@ -2930,13 +3072,13 @@ async def configuration_page():
                             <div class="form-group">
                                 <label for="growth_stage">Growth Stage (with Kc values):</label>
                                 <select id="growth_stage" onchange="updateDayRange()">
-                                    <option value="1-45" data-min="1" data-max="45" data-kc="0.5" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & fruit setting (Days 1-45) - Kc: 0.5</option>
-                                    <option value="46-75" data-min="46" data-max="75" data-kc="0.6" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early fruit growth (Days 46-75) - Kc: 0.6</option>
-                                    <option value="76-110" data-min="76" data-max="110" data-kc="0.85" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit growth (Days 76-110) - Kc: 0.85</option>
-                                    <option value="111-140" data-min="111" data-max="140" data-kc="0.75" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140) - Kc: 0.75</option>
-                                    <option value="141-290" data-min="141" data-max="290" data-kc="0.6" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290) - Kc: 0.6</option>
-                                    <option value="291-320" data-min="291" data-max="320" data-kc="0.4" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral initiation (Days 291-320) - Kc: 0.4</option>
-                                    <option value="321-365" data-min="321" data-max="365" data-kc="0.4" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral development (Days 321-365) - Kc: 0.4</option>
+                                    <option value="1-45" data-min="1" data-max="45" data-kc="0.5" data-mad="0.40" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & fruit setting (Days 1-45) - Kc: 0.5</option>
+                                    <option value="46-75" data-min="46" data-max="75" data-kc="0.6" data-mad="0.45" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early fruit growth (Days 46-75) - Kc: 0.6</option>
+                                    <option value="76-110" data-min="76" data-max="110" data-kc="0.85" data-mad="0.55" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit growth (Days 76-110) - Kc: 0.85</option>
+                                    <option value="111-140" data-min="111" data-max="140" data-kc="0.75" data-mad="0.60" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140) - Kc: 0.75</option>
+                                    <option value="141-290" data-min="141" data-max="290" data-kc="0.6" data-mad="0.70" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290) - Kc: 0.6</option>
+                                    <option value="291-320" data-min="291" data-max="320" data-kc="0.4" data-mad="0.50" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral initiation (Days 291-320) - Kc: 0.4</option>
+                                    <option value="321-365" data-min="321" data-max="365" data-kc="0.4" data-mad="0.45" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral development (Days 321-365) - Kc: 0.4</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -2947,6 +3089,29 @@ async def configuration_page():
                             <div class="form-group">
                                 <label>Current Kc Value:</label>
                                 <div id="kc_display" style="font-size: 1.5rem; font-weight: bold; color: #4CAF50; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">--</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Plant Maturity Stage (C1)</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="plant_maturity">Plant Maturity:</label>
+                                <select id="plant_maturity" onchange="updateMaturityInfo()" required>
+                                    <option value="Young" data-zr="0.30" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Young' else ''}>Young (Zr = 0.30m)</option>
+                                    <option value="Middle" data-zr="0.45" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Middle' else ''}>Middle (Zr = 0.45m)</option>
+                                    <option value="Mature" data-zr="0.60" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Mature' else ''}>Mature (Zr = 0.60m)</option>
+                                </select>
+                                <small style="color:#666;">Affects effective root zone (Zr) and MAD calculation</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Effective Root Zone (Zr):</label>
+                                <div id="zr_display" style="font-size: 1.5rem; font-weight: bold; color: #FF9800; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">0.60 m</div>
+                            </div>
+                            <div class="form-group">
+                                <label>MAD Info:</label>
+                                <div id="mad_display" style="font-size: 0.9rem; color: #666; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">Mid/Mature: MAD varies by stage</div>
                             </div>
                         </div>
                     </div>
@@ -3004,18 +3169,47 @@ async def configuration_page():
                             </div>
                             <div class="form-group">
                                 <label for="num_sprinklers">Sprinklers per Tree:</label>
-                                <select id="num_sprinklers" required>
+                                <select id="num_sprinklers" onchange="updateWettedPct()" required>
                                     <option value="">Select Number</option>
-                                    <option value="1" {is_selected('num_sprinklers', 1)}>1</option>
-                                    <option value="2" {is_selected('num_sprinklers', 2)}>2</option>
-                                    <option value="3" {is_selected('num_sprinklers', 3)}>3</option>
-                                    <option value="4" {is_selected('num_sprinklers', 4)}>4</option>
+                                    <option value="1" data-wetted="25" {is_selected('num_sprinklers', 1)}>1</option>
+                                    <option value="2" data-wetted="50" {is_selected('num_sprinklers', 2)}>2</option>
+                                    <option value="3" data-wetted="75" {is_selected('num_sprinklers', 3)}>3</option>
+                                    <option value="4" data-wetted="85" {is_selected('num_sprinklers', 4)}>4</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="canopy_radius">Canopy Radius (m) - Phase 2:</label>
+                                <label for="canopy_radius">Canopy Radius (m):</label>
                                 <input type="number" id="canopy_radius" value="{current_config.get('canopy_radius', 3.0)}" min="0.5" max="10" step="0.5" required>
                                 <small style="color:#666;">Used for wetted area calculation</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Wetted Area & Trunk Buffer (C2/C3)</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="wetted_pct">Wetted % (C2):</label>
+                                <input type="number" id="wetted_pct" value="{current_config.get('wetted_pct', 50.0)}" min="10" max="100" step="5" required>
+                                <small style="color:#666;">Default: 1 spr=25%, 2 spr=50%, 3 spr=75%, 4 spr=85%</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="trunk_buffer_enabled">Trunk Buffer (C3):</label>
+                                <select id="trunk_buffer_enabled" onchange="toggleTrunkBuffer()" required>
+                                    <option value="false" {'selected' if not current_config.get('trunk_buffer_enabled', False) else ''}>No - Include full canopy area</option>
+                                    <option value="true" {'selected' if current_config.get('trunk_buffer_enabled', False) else ''}>Yes - Exclude area near trunk</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="trunk_radius_group" style="display: {'block' if current_config.get('trunk_buffer_enabled', False) else 'none'};">
+                                <label for="trunk_buffer_radius">Trunk Buffer Radius (m):</label>
+                                <input type="number" id="trunk_buffer_radius" value="{current_config.get('trunk_buffer_radius', 0.0)}" min="0" max="0.7" step="0.1">
+                                <small style="color:#666;">Max 0.7m, buffer capped at 20% of canopy area</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Area Preview:</label>
+                                <div id="area_preview" style="font-size: 0.85rem; color: #666; padding: 10px; background: #f5f5f5; border-radius: 8px;">
+                                    Canopy: --m² | Root: --m² | Wetted: --m²
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3066,6 +3260,72 @@ async def configuration_page():
                 kcDisplay.textContent = `Kc = ${{kc}}`;
             }}
 
+            // C1: Update Plant Maturity info
+            function updateMaturityInfo() {{
+                const maturitySelect = document.getElementById('plant_maturity');
+                const zrDisplay = document.getElementById('zr_display');
+                const madDisplay = document.getElementById('mad_display');
+
+                const selectedOption = maturitySelect.options[maturitySelect.selectedIndex];
+                const zr = selectedOption.dataset.zr;
+                const maturity = selectedOption.value;
+
+                zrDisplay.textContent = `${{zr}} m`;
+
+                if (maturity === 'Young') {{
+                    madDisplay.textContent = 'Young: Fixed MAD (p=0.5)';
+                    madDisplay.style.color = '#4CAF50';
+                }} else {{
+                    madDisplay.textContent = 'Mid/Mature: MAD varies by stage';
+                    madDisplay.style.color = '#666';
+                }}
+            }}
+
+            // C2: Update wetted percentage based on sprinkler count
+            function updateWettedPct() {{
+                const sprSelect = document.getElementById('num_sprinklers');
+                const wettedInput = document.getElementById('wetted_pct');
+
+                const selectedOption = sprSelect.options[sprSelect.selectedIndex];
+                if (selectedOption && selectedOption.dataset.wetted) {{
+                    wettedInput.value = selectedOption.dataset.wetted;
+                }}
+                updateAreaPreview();
+            }}
+
+            // C3: Toggle trunk buffer radius visibility
+            function toggleTrunkBuffer() {{
+                const enabled = document.getElementById('trunk_buffer_enabled').value === 'true';
+                const radiusGroup = document.getElementById('trunk_radius_group');
+                radiusGroup.style.display = enabled ? 'block' : 'none';
+
+                if (!enabled) {{
+                    document.getElementById('trunk_buffer_radius').value = 0;
+                }}
+                updateAreaPreview();
+            }}
+
+            // Update area preview
+            function updateAreaPreview() {{
+                const canopyRadius = parseFloat(document.getElementById('canopy_radius').value) || 3.0;
+                const wettedPct = parseFloat(document.getElementById('wetted_pct').value) || 50;
+                const bufferEnabled = document.getElementById('trunk_buffer_enabled').value === 'true';
+                const bufferRadius = bufferEnabled ? (parseFloat(document.getElementById('trunk_buffer_radius').value) || 0) : 0;
+
+                const canopyArea = Math.PI * canopyRadius * canopyRadius;
+                let bufferArea = Math.PI * bufferRadius * bufferRadius;
+
+                // Cap buffer at 20% of canopy
+                const maxBuffer = canopyArea * 0.20;
+                if (bufferArea > maxBuffer) bufferArea = maxBuffer;
+
+                const rootArea = canopyArea - bufferArea;
+                const wettedArea = rootArea * (wettedPct / 100);
+
+                document.getElementById('area_preview').innerHTML =
+                    `Canopy: ${{canopyArea.toFixed(1)}}m² | Root: ${{rootArea.toFixed(1)}}m² | Wetted: ${{wettedArea.toFixed(1)}}m²`;
+            }}
+
             // Initialize on page load
             window.onload = function() {{
                 // Find the stage that matches current day
@@ -3082,7 +3342,14 @@ async def configuration_page():
                     }}
                 }}
                 updateDayRange();
+                updateMaturityInfo();
+                updateAreaPreview();
             }};
+
+            // Add event listeners for area preview updates
+            document.getElementById('canopy_radius').addEventListener('change', updateAreaPreview);
+            document.getElementById('wetted_pct').addEventListener('change', updateAreaPreview);
+            document.getElementById('trunk_buffer_radius').addEventListener('change', updateAreaPreview);
 
             // Validate day when changed
             document.getElementById('growth_day').addEventListener('change', function() {{
@@ -3123,7 +3390,14 @@ async def configuration_page():
                     emitter_rate: parseFloat(document.getElementById('emitter_rate').value),
                     plant_spacing: parseFloat(document.getElementById('plant_spacing').value),
                     num_sprinklers: parseInt(document.getElementById('num_sprinklers').value),
-                    canopy_radius: parseFloat(document.getElementById('canopy_radius').value)
+                    canopy_radius: parseFloat(document.getElementById('canopy_radius').value),
+                    // C1: Plant Maturity Stage
+                    plant_maturity: document.getElementById('plant_maturity').value,
+                    // C2: Wetted percentage
+                    wetted_pct: parseFloat(document.getElementById('wetted_pct').value),
+                    // C3: Trunk buffer
+                    trunk_buffer_enabled: document.getElementById('trunk_buffer_enabled').value === 'true',
+                    trunk_buffer_radius: parseFloat(document.getElementById('trunk_buffer_radius').value) || 0
                 }};
 
                 try {{
