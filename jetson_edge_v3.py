@@ -27,6 +27,8 @@ import requests
 import json
 import os
 import math
+import asyncio
+import threading
 
 VALVE_IP = os.getenv("VALVE_IP", "10.157.111.93")
 
@@ -367,6 +369,53 @@ class InfluxDBRecovery:
 
         except Exception as e:
             logger.error(f"Failed to query InfluxDB: {e}")
+
+    def query_15min_records_for_date(self, target_date: date):
+        """Query all 15-minute aggregate records for a specific date"""
+        if not self.query_api:
+            if not self.connect():
+                return []
+
+        try:
+            # Build time range for the target date (midnight to midnight)
+            start_time = datetime.combine(target_date, datetime.min.time())
+            end_time = start_time + timedelta(days=1)
+
+            query = f'''
+            from(bucket: "{INFLUXDB_CONFIG['bucket']}")
+                |> range(start: {start_time.isoformat()}Z, stop: {end_time.isoformat()}Z)
+                |> filter(fn: (r) => r["_measurement"] == "weather_15min")
+                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> sort(columns: ["_time"])
+            '''
+
+            logger.info(f"Querying InfluxDB for 15-min records on {target_date}...")
+            tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
+
+            records = []
+            for table in tables:
+                for record in table.records:
+                    records.append({
+                        "timestamp": record.get_time().isoformat(),
+                        "temp_min_15": record.values.get("temp_min_15"),
+                        "temp_max_15": record.values.get("temp_max_15"),
+                        "temp_avg_15": record.values.get("temp_avg_15"),
+                        "rh_avg_15": record.values.get("rh_avg_15"),
+                        "pressure_avg_15": record.values.get("pressure_avg_15"),
+                        "wind_avg_15": record.values.get("wind_avg_15"),
+                        "wind_max_15": record.values.get("wind_max_15"),
+                        "solar_avg_15": record.values.get("solar_avg_15"),
+                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "rain_mm_15": record.values.get("rain_mm_15"),
+                        "vpd_avg_15": record.values.get("vpd_avg_15"),
+                        "device": record.values.get("device", "ESP32")
+                    })
+
+            logger.info(f"Retrieved {len(records)} 15-min records for {target_date}")
+            return records
+
+        except Exception as e:
+            logger.error(f"Failed to query 15-min records: {e}")
             recovery_status["recovery_errors"].append({
                 "timestamp": datetime.now().isoformat(),
                 "error": str(e)
@@ -378,6 +427,190 @@ class InfluxDBRecovery:
             self.client.close()
 
 influx_recovery = InfluxDBRecovery()
+
+# =========================
+# Daily Aggregation Storage
+# =========================
+daily_prediction_result = {
+    "last_prediction_date": None,
+    "daily_aggregates": None,
+    "eto_prediction": None,
+    "irrigation_recommendation": None,
+    "prediction_timestamp": None
+}
+
+# =========================
+# Daily Aggregation Function (6:00 AM)
+# =========================
+def calculate_daily_aggregates_from_15min(records: list) -> dict:
+    """
+    Calculate daily aggregates from 15-minute records
+    Input: List of 15-min records from InfluxDB
+    Output: Daily feature vector for ML prediction
+    """
+    if not records:
+        return None
+
+    # Extract values (filter out None)
+    temp_mins = [r["temp_min_15"] for r in records if r.get("temp_min_15") is not None]
+    temp_maxs = [r["temp_max_15"] for r in records if r.get("temp_max_15") is not None]
+    temp_avgs = [r["temp_avg_15"] for r in records if r.get("temp_avg_15") is not None]
+    rh_avgs = [r["rh_avg_15"] for r in records if r.get("rh_avg_15") is not None]
+    wind_avgs = [r["wind_avg_15"] for r in records if r.get("wind_avg_15") is not None]
+    sunshine_mins = [r["sunshine_min_15"] for r in records if r.get("sunshine_min_15") is not None]
+    rain_mms = [r["rain_mm_15"] for r in records if r.get("rain_mm_15") is not None]
+    pressure_avgs = [r["pressure_avg_15"] for r in records if r.get("pressure_avg_15") is not None]
+
+    if not temp_mins or not temp_maxs:
+        logger.warning("Insufficient data for daily aggregation")
+        return None
+
+    # Calculate daily aggregates
+    daily = {
+        "Tmin_day": min(temp_mins),
+        "Tmax_day": max(temp_maxs),
+        "Tmean_day": sum(temp_avgs) / len(temp_avgs) if temp_avgs else (min(temp_mins) + max(temp_maxs)) / 2,
+        "RHmean_day": sum(rh_avgs) / len(rh_avgs) if rh_avgs else 70.0,
+        "WindMean_day": sum(wind_avgs) / len(wind_avgs) if wind_avgs else 1.0,
+        "SunshineHours_day": sum(sunshine_mins) / 60.0 if sunshine_mins else 0.0,  # Convert minutes to hours
+        "Rain_day": sum(rain_mms) if rain_mms else 0.0,
+        "PressureMean_day": sum(pressure_avgs) / len(pressure_avgs) if pressure_avgs else 1013.0,
+        "records_count": len(records),
+        "data_completeness": len(records) / 96.0 * 100  # Percentage of expected 96 records
+    }
+
+    logger.info(f"Daily aggregates calculated: Tmin={daily['Tmin_day']:.1f}, Tmax={daily['Tmax_day']:.1f}, "
+                f"Sun={daily['SunshineHours_day']:.1f}h, Rain={daily['Rain_day']:.1f}mm, "
+                f"Records={daily['records_count']}/96 ({daily['data_completeness']:.0f}%)")
+
+    return daily
+
+async def run_daily_prediction(target_date: date = None):
+    """
+    Run daily ETo prediction using aggregated data from InfluxDB
+    Called at 6:00 AM for yesterday's data
+    """
+    global daily_prediction_result
+
+    if target_date is None:
+        target_date = date.today() - timedelta(days=1)  # Yesterday
+
+    logger.info(f"=== RUNNING DAILY PREDICTION FOR {target_date} ===")
+
+    # Query 15-min records from InfluxDB
+    records = influx_recovery.query_15min_records_for_date(target_date)
+
+    if not records:
+        logger.warning(f"No 15-min records found for {target_date}")
+        return None
+
+    # Calculate daily aggregates
+    daily = calculate_daily_aggregates_from_15min(records)
+
+    if not daily:
+        logger.error("Failed to calculate daily aggregates")
+        return None
+
+    # Store aggregates
+    daily_prediction_result["daily_aggregates"] = daily
+    daily_prediction_result["last_prediction_date"] = target_date.isoformat()
+
+    # Check if models are loaded
+    if not all(models[key] is not None for key in ["rf_model", "mlp_model", "scaler_rad", "scaler_eto"]):
+        logger.error("Models not loaded - cannot run prediction")
+        return daily
+
+    try:
+        # Run ML prediction
+        # Step 1: RAD estimation
+        rad_input = enhance_features_for_rad(
+            daily["Tmin_day"], daily["Tmax_day"], daily["RHmean_day"],
+            daily["WindMean_day"], daily["SunshineHours_day"]
+        )
+
+        rad_scaled = models["scaler_rad"].transform(rad_input)
+        rad_prediction_raw = models["rf_model"].predict(rad_scaled)[0]
+        estimated_rad = apply_nighttime_constraints(rad_prediction_raw, daily["SunshineHours_day"])
+
+        # Step 2: ETo prediction
+        eto_input = np.array([[
+            daily["Tmin_day"], daily["Tmax_day"], daily["RHmean_day"],
+            daily["WindMean_day"], daily["SunshineHours_day"], estimated_rad,
+        ]])
+
+        eto_scaled = models["scaler_eto"].transform(eto_input)
+        eto_prediction_raw = models["mlp_model"].predict(eto_scaled)[0]
+        eto_prediction = max(0.1, min(eto_prediction_raw, 15.0))
+
+        logger.info(f"DAILY ETo PREDICTION: {eto_prediction:.3f} mm/day (RAD: {estimated_rad:.2f} MJ/m2)")
+
+        # Store prediction result
+        daily_prediction_result["eto_prediction"] = {
+            "eto_mm_day": round(float(eto_prediction), 3),
+            "estimated_rad": round(float(estimated_rad), 3),
+            "date": target_date.isoformat()
+        }
+        daily_prediction_result["prediction_timestamp"] = datetime.now().isoformat()
+
+        # Calculate irrigation recommendation
+        if irrigation_config:
+            config = IrrigationConfig(**irrigation_config)
+            irrigation_result = irrigation_calc.calculate_irrigation_recommendation(
+                eto_prediction, config, daily["Rain_day"]
+            )
+            irrigation_result["date"] = target_date.isoformat()
+            irrigation_result["prediction_type"] = "daily"
+            daily_prediction_result["irrigation_recommendation"] = irrigation_result
+            irrigation_history.append(irrigation_result)
+
+            logger.info(f"DAILY IRRIGATION: {irrigation_result['recommendation']}")
+
+        return daily_prediction_result
+
+    except Exception as e:
+        logger.error(f"Daily prediction failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return daily
+
+# =========================
+# 6:00 AM Scheduler
+# =========================
+def daily_scheduler():
+    """Background thread that runs daily prediction at 6:00 AM"""
+    logger.info("Daily scheduler started - will run at 6:00 AM")
+
+    while True:
+        now = datetime.now()
+        target_time = now.replace(hour=6, minute=0, second=0, microsecond=0)
+
+        # If it's past 6 AM today, schedule for tomorrow
+        if now >= target_time:
+            target_time += timedelta(days=1)
+
+        # Calculate sleep duration
+        sleep_seconds = (target_time - now).total_seconds()
+        logger.info(f"Next daily prediction scheduled for {target_time} (in {sleep_seconds/3600:.1f} hours)")
+
+        # Sleep until 6:00 AM
+        import time
+        time.sleep(sleep_seconds)
+
+        # Run the daily prediction
+        logger.info("=== 6:00 AM - TRIGGERING DAILY PREDICTION ===")
+        try:
+            # Run in event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(run_daily_prediction())
+            loop.close()
+
+            if result:
+                logger.info("Daily prediction completed successfully")
+            else:
+                logger.warning("Daily prediction returned no result")
+        except Exception as e:
+            logger.error(f"Daily prediction error: {e}")
 
 # =========================
 # Model Loading Function
@@ -466,6 +699,12 @@ async def lifespan(app: FastAPI):
     await valve_controller.get_valve_status()
     await check_and_recover_missed_data()
     update_growth_day()  # Initialize growth day
+
+    # Start 6:00 AM daily scheduler in background thread
+    scheduler_thread = threading.Thread(target=daily_scheduler, daemon=True)
+    scheduler_thread.start()
+    logger.info("6:00 AM daily prediction scheduler started")
+
     yield
     influx_recovery.close()
 
@@ -887,6 +1126,59 @@ async def get_recovery_status():
         "last_processed_timestamp": last_processed_timestamp,
         "recovery_status": recovery_status,
         "prediction_history_count": len(prediction_history)
+    }
+
+# =========================
+# Daily Prediction Endpoints
+# =========================
+@app.post("/daily-prediction/run")
+async def trigger_daily_prediction(target_date: str = None):
+    """
+    Manually trigger daily prediction.
+    If target_date not provided, uses yesterday.
+    Format: YYYY-MM-DD
+    """
+    if target_date:
+        try:
+            prediction_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    else:
+        prediction_date = date.today() - timedelta(days=1)
+
+    result = await run_daily_prediction(prediction_date)
+
+    if result:
+        return {
+            "status": "success",
+            "date": prediction_date.isoformat(),
+            "result": result
+        }
+    else:
+        raise HTTPException(status_code=500, detail="Daily prediction failed - check logs")
+
+@app.get("/daily-prediction/latest")
+async def get_latest_daily_prediction():
+    """Get the most recent daily prediction result"""
+    if daily_prediction_result["eto_prediction"]:
+        return daily_prediction_result
+    else:
+        return {"status": "no_prediction", "message": "No daily prediction has been run yet"}
+
+@app.get("/daily-prediction/status")
+async def get_daily_prediction_status():
+    """Get status of the daily prediction system"""
+    now = datetime.now()
+    next_run = now.replace(hour=6, minute=0, second=0, microsecond=0)
+    if now >= next_run:
+        next_run += timedelta(days=1)
+
+    return {
+        "last_prediction_date": daily_prediction_result.get("last_prediction_date"),
+        "last_prediction_time": daily_prediction_result.get("prediction_timestamp"),
+        "next_scheduled_run": next_run.isoformat(),
+        "hours_until_next_run": (next_run - now).total_seconds() / 3600,
+        "influxdb_available": INFLUXDB_AVAILABLE
     }
 
 # =========================
