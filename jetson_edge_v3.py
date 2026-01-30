@@ -3206,22 +3206,22 @@ async def raw_sensor_data_page():
                         <div class="logo-icon">💧</div>
                         <div>
                             <div class="logo-text">AquaSense</div>
-                            <div class="logo-subtitle">Smart Irrigation</div>
+                            <div class="logo-subtitle" data-en="Smart Irrigation" data-th="ระบบชลประทานอัจฉริยะ">Smart Irrigation</div>
                         </div>
                     </div>
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/dashboard" class="nav-item">
-                        <span class="nav-icon">📊</span> Dashboard
+                        <span class="nav-icon">📊</span> <span data-en="Dashboard" data-th="แดชบอร์ด">Dashboard</span>
                     </a>
                     <a href="/config" class="nav-item">
-                        <span class="nav-icon">⚙️</span> Settings
+                        <span class="nav-icon">⚙️</span> <span data-en="Settings" data-th="การตั้งค่า">Settings</span>
                     </a>
                     <a href="/raw-data" class="nav-item active">
-                        <span class="nav-icon">📈</span> Raw Data
+                        <span class="nav-icon">📈</span> <span data-en="Raw Data" data-th="ข้อมูลดิบ">Raw Data</span>
                     </a>
                     <a href="/docs" class="nav-item">
-                        <span class="nav-icon">📄</span> API Docs
+                        <span class="nav-icon">📄</span> <span data-en="API Docs" data-th="เอกสาร API">API Docs</span>
                     </a>
                 </nav>
             </aside>
@@ -3254,46 +3254,46 @@ async def raw_sensor_data_page():
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--primary-light);">📦</div>
                         <div class="stat-value">{len(local_15min_records)}</div>
-                        <div class="stat-label">Total Records</div>
+                        <div class="stat-label" data-en="Total Records" data-th="จำนวนข้อมูลทั้งหมด">Total Records</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--success-light);">📅</div>
                         <div class="stat-value">{today_records}</div>
-                        <div class="stat-label">Today ({today_records/96*100:.0f}%)</div>
+                        <div class="stat-label"><span data-en="Today" data-th="วันนี้">Today</span> ({today_records/96*100:.0f}%)</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--warning-light);">📆</div>
                         <div class="stat-value">{yesterday_records}</div>
-                        <div class="stat-label">Yesterday ({yesterday_records/96*100:.0f}%)</div>
+                        <div class="stat-label"><span data-en="Yesterday" data-th="เมื่อวาน">Yesterday</span> ({yesterday_records/96*100:.0f}%)</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--gray-100);">💾</div>
                         <div class="stat-value">100</div>
-                        <div class="stat-label">Max Capacity</div>
+                        <div class="stat-label" data-en="Max Capacity" data-th="ความจุสูงสุด">Max Capacity</div>
                     </div>
                 </div>
 
                 <!-- Data Table Section -->
                 <div class="section-header">
                     <div class="section-icon">📊</div>
-                    <span class="section-title">15-Minute Aggregates from ESP32</span>
-                    <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Most recent first</span>
+                    <span class="section-title" data-en="15-Minute Aggregates from ESP32" data-th="ข้อมูลรวม 15 นาทีจาก ESP32">15-Minute Aggregates from ESP32</span>
+                    <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Most recent first" data-th="ล่าสุดก่อน">Most recent first</span>
                 </div>
                 <div class="data-table-wrapper">
                     <table class="data-table">
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Timestamp</th>
-                                <th>T_min (°C)</th>
-                                <th>T_max (°C)</th>
-                                <th>RH (%)</th>
-                                <th>Wind (m/s)</th>
-                                <th>Pressure (hPa)</th>
-                                <th>Sunshine (min)</th>
-                                <th>Rain (mm)</th>
+                                <th data-en="Timestamp" data-th="เวลา">Timestamp</th>
+                                <th data-en="T_min (°C)" data-th="อุณหภูมิต่ำ (°C)">T_min (°C)</th>
+                                <th data-en="T_max (°C)" data-th="อุณหภูมิสูง (°C)">T_max (°C)</th>
+                                <th data-en="RH (%)" data-th="ความชื้น (%)">RH (%)</th>
+                                <th data-en="Wind (m/s)" data-th="ลม (m/s)">Wind (m/s)</th>
+                                <th data-en="Pressure (hPa)" data-th="ความกดอากาศ (hPa)">Pressure (hPa)</th>
+                                <th data-en="Sunshine (min)" data-th="แสงแดด (นาที)">Sunshine (min)</th>
+                                <th data-en="Rain (mm)" data-th="ฝน (มม.)">Rain (mm)</th>
                                 <th>VPD (kPa)</th>
-                                <th>Growth Stage</th>
+                                <th data-en="Growth Stage" data-th="ระยะการเจริญเติบโต">Growth Stage</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4237,34 +4237,34 @@ async def dashboard():
                         <div class="logo-icon">💧</div>
                         <div>
                             <div class="logo-text">AquaSense</div>
-                            <div class="logo-subtitle">Smart Irrigation</div>
+                            <div class="logo-subtitle" data-en="Smart Irrigation" data-th="ระบบชลประทานอัจฉริยะ">Smart Irrigation</div>
                         </div>
                     </div>
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/dashboard" class="nav-item active">
-                        <span class="nav-icon">📊</span> Dashboard
+                        <span class="nav-icon">📊</span> <span data-en="Dashboard" data-th="แดชบอร์ด">Dashboard</span>
                     </a>
                     <a href="/config" class="nav-item">
-                        <span class="nav-icon">⚙️</span> Settings
+                        <span class="nav-icon">⚙️</span> <span data-en="Settings" data-th="การตั้งค่า">Settings</span>
                     </a>
                     <a href="/raw-data" class="nav-item">
-                        <span class="nav-icon">📈</span> Raw Data
+                        <span class="nav-icon">📈</span> <span data-en="Raw Data" data-th="ข้อมูลดิบ">Raw Data</span>
                     </a>
                     <a href="/docs" class="nav-item">
-                        <span class="nav-icon">📄</span> API Docs
+                        <span class="nav-icon">📄</span> <span data-en="API Docs" data-th="เอกสาร API">API Docs</span>
                     </a>
                 </nav>
                 <div class="farm-info">
                     <div class="farm-name">{irrigation_config.get('farm_name', 'My Farm')}</div>
                     <div class="farm-stats">
                         <div class="farm-stat">
-                            <div class="farm-stat-value">Day {current_day}</div>
-                            <div class="farm-stat-label">Growth</div>
+                            <div class="farm-stat-value" data-en="Day {current_day}" data-th="วันที่ {current_day}">Day {current_day}</div>
+                            <div class="farm-stat-label" data-en="Growth" data-th="การเจริญเติบโต">Growth</div>
                         </div>
                         <div class="farm-stat">
                             <div class="farm-stat-value">{current_kc:.2f}</div>
-                            <div class="farm-stat-label">Kc Value</div>
+                            <div class="farm-stat-label" data-en="Kc Value" data-th="ค่า Kc">Kc Value</div>
                         </div>
                     </div>
                 </div>
@@ -4455,20 +4455,20 @@ async def dashboard():
                         <div class="daily-card">
                             <div class="daily-icon" style="background: var(--primary-light);">💨</div>
                             <div class="daily-value" style="color: var(--primary);">{current_eto:.2f}</div>
-                            <div class="daily-label">ETo (mm/day)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Reference ET</div>
+                            <div class="daily-label">ETo (mm/<span data-en="day" data-th="วัน">day</span>)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Reference ET" data-th="ค่าอ้างอิง ET">Reference ET</div>
                         </div>
                         <div class="daily-card">
                             <div class="daily-icon" style="background: var(--success-light);">🌱</div>
                             <div class="daily-value" style="color: var(--success);">{current_etc:.2f}</div>
-                            <div class="daily-label">ETc (mm/day)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Crop ET (Kc × ETo)</div>
+                            <div class="daily-label">ETc (mm/<span data-en="day" data-th="วัน">day</span>)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Crop ET (Kc × ETo)" data-th="การคายระเหยพืช (Kc × ETo)">Crop ET (Kc × ETo)</div>
                         </div>
                         <div class="daily-card">
                             <div class="daily-icon" style="background: var(--warning-light);">☀️</div>
                             <div class="daily-value" style="color: var(--warning);">{current_rn_est:.2f}</div>
-                            <div class="daily-label">Rn_est (MJ/m²/day)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;">Net Radiation</div>
+                            <div class="daily-label">Rn_est (MJ/m²/<span data-en="day" data-th="วัน">day</span>)</div>
+                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Net Radiation" data-th="รังสีสุทธิ">Net Radiation</div>
                         </div>
                     </div>
                 </div>
@@ -4477,47 +4477,47 @@ async def dashboard():
                 <div class="charts-section">
                     <div class="section-header">
                         <div class="section-icon blue">📈</div>
-                        <span class="section-title">15-Minute Trends</span>
+                        <span class="section-title" data-en="15-Minute Trends" data-th="แนวโน้ม 15 นาที">15-Minute Trends</span>
                     </div>
                     <div class="charts-grid">
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">🌡️ Temperature</span>
+                                <span class="chart-title">🌡️ <span data-en="Temperature" data-th="อุณหภูมิ">Temperature</span></span>
                                 <span class="chart-badge">°C</span>
                             </div>
                             <div class="chart-container"><canvas id="temperatureChart"></canvas></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">💧 Humidity</span>
+                                <span class="chart-title">💧 <span data-en="Humidity" data-th="ความชื้น">Humidity</span></span>
                                 <span class="chart-badge">%</span>
                             </div>
                             <div class="chart-container"><canvas id="humidityChart"></canvas></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">🌬️ Wind Speed</span>
+                                <span class="chart-title">🌬️ <span data-en="Wind Speed" data-th="ความเร็วลม">Wind Speed</span></span>
                                 <span class="chart-badge">m/s</span>
                             </div>
                             <div class="chart-container"><canvas id="windChart"></canvas></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">☀️ Solar Radiation</span>
+                                <span class="chart-title">☀️ <span data-en="Solar Radiation" data-th="รังสีดวงอาทิตย์">Solar Radiation</span></span>
                                 <span class="chart-badge">W/m²</span>
                             </div>
                             <div class="chart-container"><canvas id="radiationChart"></canvas></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">🌧️ Rainfall</span>
+                                <span class="chart-title">🌧️ <span data-en="Rainfall" data-th="ปริมาณฝน">Rainfall</span></span>
                                 <span class="chart-badge">mm</span>
                             </div>
                             <div class="chart-container"><canvas id="rainfallChart"></canvas></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
-                                <span class="chart-title">📊 Pressure</span>
+                                <span class="chart-title">📊 <span data-en="Pressure" data-th="ความกดอากาศ">Pressure</span></span>
                                 <span class="chart-badge">hPa</span>
                             </div>
                             <div class="chart-container"><canvas id="pressureChart"></canvas></div>
@@ -4529,8 +4529,8 @@ async def dashboard():
                 <div class="irrigation-section">
                     <div class="section-header">
                         <div class="section-icon orange">💦</div>
-                        <span class="section-title">Irrigation History</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">Last 10 events</span>
+                        <span class="section-title" data-en="Irrigation History" data-th="ประวัติการให้น้ำ">Irrigation History</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Last 10 events" data-th="10 เหตุการณ์ล่าสุด">Last 10 events</span>
                     </div>
                     <div class="irrigation-chart-card">
                         <div class="chart-container" style="height: 200px;"><canvas id="irrigationHistoryChart"></canvas></div>
@@ -5182,22 +5182,22 @@ async def configuration_page():
                         <div class="logo-icon">🌿</div>
                         <div>
                             <div class="logo-text">AquaSense</div>
-                            <div class="logo-subtitle">Farm Settings</div>
+                            <div class="logo-subtitle" data-en="Farm Settings" data-th="การตั้งค่าฟาร์ม">Farm Settings</div>
                         </div>
                     </div>
                 </div>
                 <nav class="sidebar-nav">
                     <a href="/dashboard" class="nav-item">
-                        <span class="nav-icon">📊</span> Dashboard
+                        <span class="nav-icon">📊</span> <span data-en="Dashboard" data-th="แดชบอร์ด">Dashboard</span>
                     </a>
                     <a href="/config" class="nav-item active">
-                        <span class="nav-icon">⚙️</span> Settings
+                        <span class="nav-icon">⚙️</span> <span data-en="Settings" data-th="การตั้งค่า">Settings</span>
                     </a>
                     <a href="/raw-data" class="nav-item">
-                        <span class="nav-icon">📈</span> Raw Data
+                        <span class="nav-icon">📈</span> <span data-en="Raw Data" data-th="ข้อมูลดิบ">Raw Data</span>
                     </a>
                     <a href="/docs" class="nav-item">
-                        <span class="nav-icon">📄</span> API Docs
+                        <span class="nav-icon">📄</span> <span data-en="API Docs" data-th="เอกสาร API">API Docs</span>
                     </a>
                 </nav>
             </aside>
@@ -5206,9 +5206,9 @@ async def configuration_page():
             <main class="main-content">
                 <!-- Mobile Navigation -->
                 <nav class="mobile-nav">
-                    <a href="/dashboard" class="nav-item">Dashboard</a>
-                    <a href="/config" class="nav-item active">Settings</a>
-                    <a href="/raw-data" class="nav-item">Data</a>
+                    <a href="/dashboard" class="nav-item" data-en="Dashboard" data-th="แดชบอร์ด">Dashboard</a>
+                    <a href="/config" class="nav-item active" data-en="Settings" data-th="การตั้งค่า">Settings</a>
+                    <a href="/raw-data" class="nav-item" data-en="Data" data-th="ข้อมูล">Data</a>
                     <a href="/docs" class="nav-item">API</a>
                 </nav>
 
@@ -5237,15 +5237,15 @@ async def configuration_page():
                     </div>
                     <div class="status-pills">
                         <div class="status-pill">
-                            <div class="label">Day</div>
+                            <div class="label" data-en="Day" data-th="วัน">Day</div>
                             <div class="value">{current_day}</div>
                         </div>
                         <div class="status-pill">
-                            <div class="label">Maturity</div>
+                            <div class="label" data-en="Maturity" data-th="วุฒิภาวะ">Maturity</div>
                             <div class="value">{current_config.get('plant_maturity', 'Mature')}</div>
                         </div>
                         <div class="status-pill">
-                            <div class="label">Wetted</div>
+                            <div class="label" data-en="Wetted" data-th="พื้นที่เปียก">Wetted</div>
                             <div class="value">{current_config.get('wetted_pct', 50.0)}%</div>
                         </div>
                     </div>
@@ -5258,20 +5258,20 @@ async def configuration_page():
                     <div class="card">
                         <div class="card-header">
                             <div class="card-icon green">🏡</div>
-                            <span class="card-title">Farm & Crop</span>
+                            <span class="card-title" data-en="Farm & Crop" data-th="ฟาร์มและพืช">Farm & Crop</span>
                         </div>
                         <div class="card-body">
                             <div class="form-grid">
                                 <div class="form-group">
-                                    <label for="farm_name">Farm Name</label>
-                                    <input type="text" id="farm_name" value="{current_config.get('farm_name', '')}" placeholder="Enter farm name" required>
+                                    <label for="farm_name" data-en="Farm Name" data-th="ชื่อฟาร์ม">Farm Name</label>
+                                    <input type="text" id="farm_name" value="{current_config.get('farm_name', '')}" placeholder="Enter farm name" data-placeholder-en="Enter farm name" data-placeholder-th="ใส่ชื่อฟาร์ม" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="crop_type">Crop Type</label>
+                                    <label for="crop_type" data-en="Crop Type" data-th="ชนิดพืช">Crop Type</label>
                                     <select id="crop_type" required>
-                                        <option value="">Select crop</option>
-                                        <option value="Durian" {is_selected('crop_type', 'Durian')}>Durian</option>
-                                        <option value="Mangosteen" {is_selected('crop_type', 'Mangosteen')}>Mangosteen</option>
+                                        <option value="" data-en="Select crop" data-th="เลือกพืช">Select crop</option>
+                                        <option value="Durian" {is_selected('crop_type', 'Durian')} data-en="Durian" data-th="ทุเรียน">Durian</option>
+                                        <option value="Mangosteen" {is_selected('crop_type', 'Mangosteen')} data-en="Mangosteen" data-th="มังคุด">Mangosteen</option>
                                     </select>
                                 </div>
                             </div>
@@ -5282,45 +5282,45 @@ async def configuration_page():
                     <div class="card">
                         <div class="card-header">
                             <div class="card-icon green">🌱</div>
-                            <span class="card-title">Growth Stage</span>
+                            <span class="card-title" data-en="Growth Stage" data-th="ระยะการเจริญเติบโต">Growth Stage</span>
                         </div>
                         <div class="card-body">
                             <div class="form-grid" style="margin-bottom: 16px;">
                                 <div class="form-group span-2">
-                                    <label for="growth_stage">Growth Stage</label>
+                                    <label for="growth_stage" data-en="Growth Stage" data-th="ระยะการเจริญเติบโต">Growth Stage</label>
                                     <select id="growth_stage" onchange="updateDayRange()">
-                                        <option value="1-45" data-min="1" data-max="45" data-kc="0.5" data-mad="0.40" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & Fruit Setting (Days 1-45)</option>
-                                        <option value="46-75" data-min="46" data-max="75" data-kc="0.6" data-mad="0.45" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early Fruit Growth (Days 46-75)</option>
-                                        <option value="76-110" data-min="76" data-max="110" data-kc="0.85" data-mad="0.55" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit Growth (Days 76-110)</option>
-                                        <option value="111-140" data-min="111" data-max="140" data-kc="0.75" data-mad="0.60" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140)</option>
-                                        <option value="141-290" data-min="141" data-max="290" data-kc="0.6" data-mad="0.70" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290)</option>
-                                        <option value="291-320" data-min="291" data-max="320" data-kc="0.4" data-mad="0.50" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral Initiation (Days 291-320)</option>
-                                        <option value="321-365" data-min="321" data-max="365" data-kc="0.4" data-mad="0.45" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral Development (Days 321-365)</option>
+                                        <option value="1-45" data-min="1" data-max="45" data-kc="0.5" data-mad="0.40" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')} data-en="Flowering & Fruit Setting (Days 1-45)" data-th="ออกดอกและติดผล (วันที่ 1-45)">Flowering & Fruit Setting (Days 1-45)</option>
+                                        <option value="46-75" data-min="46" data-max="75" data-kc="0.6" data-mad="0.45" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')} data-en="Early Fruit Growth (Days 46-75)" data-th="ผลเริ่มเจริญ (วันที่ 46-75)">Early Fruit Growth (Days 46-75)</option>
+                                        <option value="76-110" data-min="76" data-max="110" data-kc="0.85" data-mad="0.55" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')} data-en="Fruit Growth (Days 76-110)" data-th="ผลเจริญเติบโต (วันที่ 76-110)">Fruit Growth (Days 76-110)</option>
+                                        <option value="111-140" data-min="111" data-max="140" data-kc="0.75" data-mad="0.60" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')} data-en="Fruit Maturity (Days 111-140)" data-th="ผลสุกแก่ (วันที่ 111-140)">Fruit Maturity (Days 111-140)</option>
+                                        <option value="141-290" data-min="141" data-max="290" data-kc="0.6" data-mad="0.70" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')} data-en="Vegetative Growth (Days 141-290)" data-th="เจริญเติบโตทางใบ (วันที่ 141-290)">Vegetative Growth (Days 141-290)</option>
+                                        <option value="291-320" data-min="291" data-max="320" data-kc="0.4" data-mad="0.50" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')} data-en="Floral Initiation (Days 291-320)" data-th="เริ่มสร้างดอก (วันที่ 291-320)">Floral Initiation (Days 291-320)</option>
+                                        <option value="321-365" data-min="321" data-max="365" data-kc="0.4" data-mad="0.45" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')} data-en="Floral Development (Days 321-365)" data-th="พัฒนาดอก (วันที่ 321-365)">Floral Development (Days 321-365)</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="form-grid form-grid-4">
                                 <div class="form-group">
-                                    <label for="growth_day">Current Day</label>
+                                    <label for="growth_day" data-en="Current Day" data-th="วันปัจจุบัน">Current Day</label>
                                     <input type="number" id="growth_day" value="{current_day}" min="1" max="365" required>
-                                    <small id="day_range_hint">Range: 1-365</small>
+                                    <small id="day_range_hint" data-en="Range: 1-365" data-th="ช่วง: 1-365">Range: 1-365</small>
                                 </div>
                                 <div class="form-group">
-                                    <label>Kc Value</label>
+                                    <label data-en="Kc Value" data-th="ค่า Kc">Kc Value</label>
                                     <div class="metric-display">
                                         <div class="metric-value" id="kc_display">--</div>
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label for="plant_maturity">Plant Maturity</label>
+                                    <label for="plant_maturity" data-en="Plant Maturity" data-th="อายุพืช">Plant Maturity</label>
                                     <select id="plant_maturity" onchange="updateMaturityInfo()" required>
-                                        <option value="Young" data-zr="0.30" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Young' else ''}>Young</option>
-                                        <option value="Middle" data-zr="0.45" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Middle' else ''}>Middle</option>
-                                        <option value="Mature" data-zr="0.60" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Mature' else ''}>Mature</option>
+                                        <option value="Young" data-zr="0.30" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Young' else ''} data-en="Young" data-th="อ่อน">Young</option>
+                                        <option value="Middle" data-zr="0.45" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Middle' else ''} data-en="Middle" data-th="กลาง">Middle</option>
+                                        <option value="Mature" data-zr="0.60" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Mature' else ''} data-en="Mature" data-th="โตเต็มที่">Mature</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>Root Zone (Zr)</label>
+                                    <label data-en="Root Zone (Zr)" data-th="โซนราก (Zr)">Root Zone (Zr)</label>
                                     <div class="metric-display">
                                         <div class="metric-value yellow" id="zr_display">0.60m</div>
                                     </div>
@@ -5333,33 +5333,33 @@ async def configuration_page():
                     <div class="card">
                         <div class="card-header">
                             <div class="card-icon blue">💧</div>
-                            <span class="card-title">Soil & Irrigation</span>
+                            <span class="card-title" data-en="Soil & Irrigation" data-th="ดินและการชลประทาน">Soil & Irrigation</span>
                         </div>
                         <div class="card-body">
                             <div class="form-grid form-grid-4">
                                 <div class="form-group">
-                                    <label for="soil_type">Soil Type</label>
+                                    <label for="soil_type" data-en="Soil Type" data-th="ชนิดดิน">Soil Type</label>
                                     <select id="soil_type" required>
-                                        <option value="">Select</option>
-                                        <option value="Sandy Loam" {is_selected('soil_type', 'Sandy Loam')}>Sandy Loam</option>
-                                        <option value="Loamy Sand" {is_selected('soil_type', 'Loamy Sand')}>Loamy Sand</option>
-                                        <option value="Loam" {is_selected('soil_type', 'Loam')}>Loam</option>
-                                        <option value="Sandy Clay Loam" {is_selected('soil_type', 'Sandy Clay Loam')}>Sandy Clay Loam</option>
-                                        <option value="Clay Loam" {is_selected('soil_type', 'Clay Loam')}>Clay Loam</option>
+                                        <option value="" data-en="Select" data-th="เลือก">Select</option>
+                                        <option value="Sandy Loam" {is_selected('soil_type', 'Sandy Loam')} data-en="Sandy Loam" data-th="ดินร่วนปนทราย">Sandy Loam</option>
+                                        <option value="Loamy Sand" {is_selected('soil_type', 'Loamy Sand')} data-en="Loamy Sand" data-th="ดินทรายปนร่วน">Loamy Sand</option>
+                                        <option value="Loam" {is_selected('soil_type', 'Loam')} data-en="Loam" data-th="ดินร่วน">Loam</option>
+                                        <option value="Sandy Clay Loam" {is_selected('soil_type', 'Sandy Clay Loam')} data-en="Sandy Clay Loam" data-th="ดินร่วนเหนียวปนทราย">Sandy Clay Loam</option>
+                                        <option value="Clay Loam" {is_selected('soil_type', 'Clay Loam')} data-en="Clay Loam" data-th="ดินร่วนเหนียว">Clay Loam</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="irrigation_type">Irrigation Type</label>
+                                    <label for="irrigation_type" data-en="Irrigation Type" data-th="ประเภทการชลประทาน">Irrigation Type</label>
                                     <select id="irrigation_type" required>
-                                        <option value="">Select</option>
-                                        <option value="Drip" {is_selected('irrigation_type', 'Drip')}>Drip (90%)</option>
-                                        <option value="Sprinkler" {is_selected('irrigation_type', 'Sprinkler')}>Sprinkler (80%)</option>
+                                        <option value="" data-en="Select" data-th="เลือก">Select</option>
+                                        <option value="Drip" {is_selected('irrigation_type', 'Drip')} data-en="Drip (90%)" data-th="น้ำหยด (90%)">Drip (90%)</option>
+                                        <option value="Sprinkler" {is_selected('irrigation_type', 'Sprinkler')} data-en="Sprinkler (80%)" data-th="สปริงเกอร์ (80%)">Sprinkler (80%)</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="emitter_rate">Emitter Rate (L/h)</label>
+                                    <label for="emitter_rate" data-en="Emitter Rate (L/h)" data-th="อัตราการจ่ายน้ำ (ลิตร/ชม.)">Emitter Rate (L/h)</label>
                                     <select id="emitter_rate" required>
-                                        <option value="">Select</option>
+                                        <option value="" data-en="Select" data-th="เลือก">Select</option>
                                         <option value="20" {is_selected('emitter_rate', 20)}>20</option>
                                         <option value="30" {is_selected('emitter_rate', 30)}>30</option>
                                         <option value="35" {is_selected('emitter_rate', 35)}>35</option>
@@ -5370,9 +5370,9 @@ async def configuration_page():
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="num_sprinklers">Sprinklers/Tree</label>
+                                    <label for="num_sprinklers" data-en="Sprinklers/Tree" data-th="สปริงเกอร์/ต้น">Sprinklers/Tree</label>
                                     <select id="num_sprinklers" onchange="updateWettedPct()" required>
-                                        <option value="">Select</option>
+                                        <option value="" data-en="Select" data-th="เลือก">Select</option>
                                         <option value="1" data-wetted="25" {is_selected('num_sprinklers', 1)}>1</option>
                                         <option value="2" data-wetted="50" {is_selected('num_sprinklers', 2)}>2</option>
                                         <option value="3" data-wetted="75" {is_selected('num_sprinklers', 3)}>3</option>
@@ -5387,14 +5387,14 @@ async def configuration_page():
                     <div class="card">
                         <div class="card-header">
                             <div class="card-icon yellow">🌳</div>
-                            <span class="card-title">Canopy & Coverage</span>
+                            <span class="card-title" data-en="Canopy & Coverage" data-th="ทรงพุ่มและพื้นที่ครอบคลุม">Canopy & Coverage</span>
                         </div>
                         <div class="card-body">
                             <div class="form-grid form-grid-4">
                                 <div class="form-group">
-                                    <label for="plant_spacing">Tree Spacing (m)</label>
+                                    <label for="plant_spacing" data-en="Tree Spacing (m)" data-th="ระยะห่างต้นไม้ (ม.)">Tree Spacing (m)</label>
                                     <select id="plant_spacing" required>
-                                        <option value="">Select</option>
+                                        <option value="" data-en="Select" data-th="เลือก">Select</option>
                                         <option value="10" {is_selected('plant_spacing', 10)}>10m</option>
                                         <option value="11" {is_selected('plant_spacing', 11)}>11m</option>
                                         <option value="12" {is_selected('plant_spacing', 12)}>12m</option>
@@ -5402,36 +5402,36 @@ async def configuration_page():
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label for="canopy_radius">Canopy Radius (m)</label>
+                                    <label for="canopy_radius" data-en="Canopy Radius (m)" data-th="รัศมีทรงพุ่ม (ม.)">Canopy Radius (m)</label>
                                     <input type="number" id="canopy_radius" value="{current_config.get('canopy_radius', 3.0)}" min="0.5" max="10" step="0.5" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="wetted_pct">Wetted Area %</label>
+                                    <label for="wetted_pct" data-en="Wetted Area %" data-th="พื้นที่เปียก %">Wetted Area %</label>
                                     <input type="number" id="wetted_pct" value="{current_config.get('wetted_pct', 50.0)}" min="10" max="100" step="5" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="trunk_buffer_enabled">Trunk Buffer</label>
+                                    <label for="trunk_buffer_enabled" data-en="Trunk Buffer" data-th="เขตกันลำต้น">Trunk Buffer</label>
                                     <select id="trunk_buffer_enabled" onchange="toggleTrunkBuffer()" required>
-                                        <option value="false" {'selected' if not current_config.get('trunk_buffer_enabled', False) else ''}>Disabled</option>
-                                        <option value="true" {'selected' if current_config.get('trunk_buffer_enabled', False) else ''}>Enabled</option>
+                                        <option value="false" {'selected' if not current_config.get('trunk_buffer_enabled', False) else ''} data-en="Disabled" data-th="ปิด">Disabled</option>
+                                        <option value="true" {'selected' if current_config.get('trunk_buffer_enabled', False) else ''} data-en="Enabled" data-th="เปิด">Enabled</option>
                                     </select>
                                 </div>
                             </div>
                             <div class="form-grid" id="trunk_radius_row" style="display: {'grid' if current_config.get('trunk_buffer_enabled', False) else 'none'}; margin-top: 16px;">
                                 <div class="form-group">
-                                    <label for="trunk_buffer_radius">Buffer Radius (m)</label>
+                                    <label for="trunk_buffer_radius" data-en="Buffer Radius (m)" data-th="รัศมีเขตกัน (ม.)">Buffer Radius (m)</label>
                                     <input type="number" id="trunk_buffer_radius" value="{current_config.get('trunk_buffer_radius', 0.0)}" min="0" max="0.7" step="0.1">
-                                    <small>Max 0.7m, capped at 20% of canopy</small>
+                                    <small data-en="Max 0.7m, capped at 20% of canopy" data-th="สูงสุด 0.7 ม., จำกัดที่ 20% ของทรงพุ่ม">Max 0.7m, capped at 20% of canopy</small>
                                 </div>
                             </div>
                             <div class="info-alert blue" id="area_preview" style="margin-top: 16px;">
                                 <span>📐</span>
-                                <span>Canopy: --m² → Root: --m² → Wetted: --m²</span>
+                                <span id="area_preview_text" data-en="Canopy: --m² → Root: --m² → Wetted: --m²" data-th="ทรงพุ่ม: --ตร.ม. → ราก: --ตร.ม. → เปียก: --ตร.ม.">Canopy: --m² → Root: --m² → Wetted: --m²</span>
                             </div>
                         </div>
                         <div class="action-bar">
-                            <button type="button" class="btn btn-secondary" onclick="window.location.reload()">Reset</button>
-                            <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                            <button type="button" class="btn btn-secondary" onclick="window.location.reload()" data-en="Reset" data-th="รีเซ็ต">Reset</button>
+                            <button type="submit" class="btn btn-primary" data-en="💾 Save Configuration" data-th="💾 บันทึกการตั้งค่า">💾 Save Configuration</button>
                         </div>
                     </div>
                 </form>
@@ -5528,8 +5528,11 @@ async def configuration_page():
                 const rootArea = canopyArea - bufferArea;
                 const wettedArea = rootArea * (wettedPct / 100);
 
-                document.getElementById('area_preview').innerHTML =
-                    `<span>📐</span><span>Canopy: ${{canopyArea.toFixed(1)}}m² → Root: ${{rootArea.toFixed(1)}}m² → Wetted: ${{wettedArea.toFixed(1)}}m²</span>`;
+                const lang = localStorage.getItem('aquasense_lang') || 'en';
+                const areaText = lang === 'th'
+                    ? `ทรงพุ่ม: ${{canopyArea.toFixed(1)}}ตร.ม. → ราก: ${{rootArea.toFixed(1)}}ตร.ม. → เปียก: ${{wettedArea.toFixed(1)}}ตร.ม.`
+                    : `Canopy: ${{canopyArea.toFixed(1)}}m² → Root: ${{rootArea.toFixed(1)}}m² → Wetted: ${{wettedArea.toFixed(1)}}m²`;
+                document.getElementById('area_preview').innerHTML = `<span>📐</span><span>${{areaText}}</span>`;
             }}
 
             // Language Toggle Functionality
@@ -5629,17 +5632,21 @@ async def configuration_page():
 
                     const result = await response.json();
 
+                    const lang = localStorage.getItem('aquasense_lang') || 'en';
                     if (response.ok) {{
+                        const successMsg = lang === 'th' ? 'บันทึกการตั้งค่าสำเร็จ! กำลังไปยังแดชบอร์ด...' : 'Configuration saved! Redirecting to dashboard...';
                         document.getElementById('message').innerHTML =
-                            '<div class="message success">Configuration saved! Redirecting to dashboard...</div>';
+                            '<div class="message success">' + successMsg + '</div>';
                         setTimeout(() => window.location.href = '/dashboard', 2000);
                     }} else {{
+                        const errorPrefix = lang === 'th' ? 'ข้อผิดพลาด: ' : 'Error: ';
                         document.getElementById('message').innerHTML =
-                            '<div class="message error">Error: ' + (result.detail || 'Unknown error') + '</div>';
+                            '<div class="message error">' + errorPrefix + (result.detail || (lang === 'th' ? 'ไม่ทราบข้อผิดพลาด' : 'Unknown error')) + '</div>';
                     }}
                 }} catch (error) {{
+                    const connError = lang === 'th' ? 'ข้อผิดพลาดการเชื่อมต่อ: ' : 'Connection error: ';
                     document.getElementById('message').innerHTML =
-                        '<div class="message error">Connection error: ' + error.message + '</div>';
+                        '<div class="message error">' + connError + error.message + '</div>';
                 }}
             }});
         </script>
