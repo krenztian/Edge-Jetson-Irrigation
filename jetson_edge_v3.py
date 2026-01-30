@@ -2807,9 +2807,11 @@ async def dashboard():
     if current_wind == 0:
         current_wind = sensor_status.get("wind", {}).get("value") or 0
 
-    current_sunshine = latest_data.get("input_data", {}).get("sunshine_hours", 0)
-    if current_sunshine == 0:
-        current_sunshine = sensor_status.get("solar", {}).get("value") or 0
+    # Sunshine minutes from latest 15-min record
+    current_sunshine_min = 0
+    if local_15min_records:
+        latest_15min = list(local_15min_records)[-1]
+        current_sunshine_min = latest_15min.get("sunshine_min_15", 0) or 0
 
     current_pressure = latest_data.get("input_data", {}).get("pressure", 0) or 0
     if current_pressure == 0:
@@ -2908,6 +2910,8 @@ async def dashboard():
     solar_status_class = 'online' if sensor_status.get('solar', {}).get('online') else 'offline'
     rain_status_class = 'online' if sensor_status.get('rain', {}).get('online') else 'offline'
     pressure_status_class = 'online' if sensor_status.get('pressure', {}).get('online') else 'offline'
+    # Sunshine status: online if solar is online (same sensor measures both)
+    sunshine_status_class = solar_status_class
 
     # Countdown section
     countdown_section = ""
@@ -3723,6 +3727,16 @@ async def dashboard():
                             <div class="sensor-name">Pressure</div>
                             <div class="sensor-value">{current_pressure:.0f}<span class="sensor-unit">hPa</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min((current_pressure-950)/100*100, 100) if current_pressure else 0}%; background: #9c27b0;"></div></div>
+                        </div>
+                        <div class="sensor-card">
+                            <div class="sensor-header">
+                                <div class="sensor-icon" style="background: #FFFDE7;">⏱️</div>
+                                <div class="sensor-status {sunshine_status_class}"></div>
+                            </div>
+                            <div class="sensor-name">Sunshine</div>
+                            <div class="sensor-value">{current_sunshine_min:.0f}<span class="sensor-unit">min</span></div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);">Last 15-min period</div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_sunshine_min/15*100, 100)}%; background: #ffb300;"></div></div>
                         </div>
                     </div>
                 </div>
