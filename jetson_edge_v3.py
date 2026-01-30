@@ -2970,6 +2970,9 @@ async def dashboard():
 async def configuration_page():
     current_config = irrigation_config
     current_day = growth_stage_config["current_day"]
+    current_stage = current_config.get('crop_growth_stage', 'Not Set')
+    # Get short stage name
+    stage_short = current_stage.split('(')[0].strip() if '(' in current_stage else current_stage[:25]
 
     def is_selected(field, value):
         return "selected" if str(current_config.get(field)) == str(value) else ""
@@ -2978,248 +2981,609 @@ async def configuration_page():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Farm Configuration v3</title>
+        <title>Farm Settings | Smart Irrigation</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta charset="UTF-8">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
+            :root {{
+                --netafim-green: #00A651;
+                --netafim-green-dark: #008C45;
+                --netafim-green-light: #E8F5E9;
+                --netafim-blue: #0077B6;
+                --netafim-blue-light: #E3F2FD;
+                --earth-brown: #8B5A2B;
+                --water-blue: #03A9F4;
+                --water-blue-light: #E1F5FE;
+                --sun-yellow: #FFC107;
+                --sun-yellow-light: #FFF8E1;
+                --gray-50: #FAFAFA;
+                --gray-100: #F5F5F5;
+                --gray-200: #EEEEEE;
+                --gray-300: #E0E0E0;
+                --gray-400: #BDBDBD;
+                --gray-500: #9E9E9E;
+                --gray-600: #757575;
+                --gray-700: #616161;
+                --gray-800: #424242;
+                --gray-900: #212121;
+                --white: #FFFFFF;
+                --radius: 8px;
+                --radius-lg: 12px;
+                --radius-xl: 16px;
+                --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+                --shadow: 0 2px 4px rgba(0,0,0,0.08);
+                --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+                --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+            }}
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #e3f2fd 0%, #f8f9ff 100%); min-height: 100vh; color: #2c3e50; line-height: 1.6; }}
-            .container {{ max-width: 1000px; margin: 0 auto; padding: 20px; }}
-            .header {{ text-align: center; margin-bottom: 25px; padding: 25px 30px; background: rgba(255, 255, 255, 0.9); border-radius: 20px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }}
-            .header h1 {{ font-size: 2.2rem; font-weight: 600; color: #1976D2; margin-bottom: 10px; }}
-            .header p {{ color: #666; font-size: 1rem; }}
-            .nav-bar {{ display: flex; justify-content: center; gap: 12px; margin-bottom: 30px; flex-wrap: wrap; }}
-            .nav-btn {{ padding: 8px 16px; background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(25, 118, 210, 0.2); border-radius: 15px; color: #1976D2; text-decoration: none; font-weight: 500; font-size: 0.85rem; transition: all 0.3s ease; }}
-            .nav-btn:hover {{ background: #1976D2; color: white; transform: translateY(-1px); }}
-            .nav-btn.active {{ background: #1976D2; color: white; }}
-            .current-config {{ background: #4CAF50; color: white; padding: 25px; border-radius: 20px; margin-bottom: 25px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); }}
-            .current-config h3 {{ color: white; margin-bottom: 15px; font-size: 1.3rem; font-weight: 600; }}
-            .config-preview {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 15px; }}
-            .config-item {{ background: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 10px; text-align: center; }}
-            .config-item-label {{ font-size: 0.8rem; opacity: 0.8; margin-bottom: 8px; font-weight: 500; }}
-            .config-item-value {{ font-weight: 600; font-size: 0.95rem; line-height: 1.2; }}
-            .config-form {{ background: rgba(255, 255, 255, 0.95); border-radius: 20px; padding: 30px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); }}
-            .form-section {{ margin-bottom: 30px; padding: 25px; background: rgba(116, 185, 255, 0.05); border-radius: 15px; border-left: 4px solid #1976D2; }}
-            .form-section h3 {{ color: #1976D2; margin-bottom: 20px; font-size: 1.3rem; font-weight: 600; }}
-            .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }}
-            .form-group {{ margin-bottom: 20px; }}
-            .form-group label {{ display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50; font-size: 0.95rem; }}
-            .form-group select, .form-group input {{ width: 100%; padding: 12px 15px; font-size: 14px; border: 2px solid #e0e0e0; border-radius: 10px; background: white; color: #2c3e50; transition: all 0.3s ease; font-family: inherit; }}
-            .form-group select:focus, .form-group input:focus {{ outline: none; border-color: #1976D2; box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1); transform: translateY(-1px); }}
-            .btn-group {{ display: flex; justify-content: center; gap: 15px; margin-top: 35px; flex-wrap: wrap; }}
-            .btn {{ padding: 12px 25px; font-size: 16px; border: none; border-radius: 12px; cursor: pointer; font-weight: 600; transition: all 0.3s ease; text-decoration: none; display: inline-block; font-family: inherit; }}
-            .btn-primary {{ background: #4CAF50; color: white; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); }}
-            .btn-primary:hover {{ background: #388E3C; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4); }}
-            .btn-secondary {{ background: #1976D2; color: white; box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3); }}
-            .btn-secondary:hover {{ background: #1565C0; transform: translateY(-2px); }}
-            .message {{ margin: 20px 0; padding: 15px 20px; border-radius: 12px; font-weight: 500; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); }}
-            .success {{ background: #4CAF50; color: white; }}
-            .error {{ background: #ef5350; color: white; }}
-            @media (max-width: 768px) {{ .form-grid {{ grid-template-columns: 1fr; }} .btn-group {{ flex-direction: column; }} .config-preview {{ grid-template-columns: repeat(2, 1fr); }} }}
+            body {{
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                background: var(--gray-50);
+                min-height: 100vh;
+                color: var(--gray-800);
+                line-height: 1.6;
+            }}
+            .page-wrapper {{ display: flex; min-height: 100vh; }}
+
+            /* Sidebar */
+            .sidebar {{
+                width: 240px;
+                background: var(--white);
+                border-right: 1px solid var(--gray-200);
+                padding: 24px 0;
+                position: fixed;
+                height: 100vh;
+                overflow-y: auto;
+            }}
+            .sidebar-logo {{
+                padding: 0 24px 24px;
+                border-bottom: 1px solid var(--gray-100);
+                margin-bottom: 16px;
+            }}
+            .sidebar-logo h2 {{
+                color: var(--netafim-green);
+                font-size: 1.25rem;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .sidebar-logo span {{ font-size: 1.5rem; }}
+            .sidebar-nav {{ padding: 0 12px; }}
+            .nav-item {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 16px;
+                color: var(--gray-600);
+                text-decoration: none;
+                border-radius: var(--radius);
+                margin-bottom: 4px;
+                font-size: 0.9rem;
+                font-weight: 500;
+                transition: all 0.2s;
+            }}
+            .nav-item:hover {{ background: var(--gray-100); color: var(--gray-800); }}
+            .nav-item.active {{
+                background: var(--netafim-green-light);
+                color: var(--netafim-green);
+            }}
+            .nav-icon {{ font-size: 1.1rem; width: 24px; text-align: center; }}
+
+            /* Main Content */
+            .main-content {{
+                flex: 1;
+                margin-left: 240px;
+                padding: 24px 32px;
+                max-width: 1000px;
+            }}
+
+            /* Page Header */
+            .page-header {{
+                margin-bottom: 24px;
+            }}
+            .page-header h1 {{
+                font-size: 1.75rem;
+                font-weight: 700;
+                color: var(--gray-900);
+                margin-bottom: 4px;
+            }}
+            .page-header p {{
+                color: var(--gray-500);
+                font-size: 0.95rem;
+            }}
+
+            /* Status Banner */
+            .status-banner {{
+                background: linear-gradient(135deg, var(--netafim-green) 0%, var(--netafim-green-dark) 100%);
+                border-radius: var(--radius-xl);
+                padding: 20px 24px;
+                margin-bottom: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                color: var(--white);
+                box-shadow: var(--shadow-md);
+            }}
+            .status-banner-left h3 {{
+                font-size: 1.1rem;
+                font-weight: 600;
+                margin-bottom: 2px;
+            }}
+            .status-banner-left p {{
+                font-size: 0.85rem;
+                opacity: 0.9;
+            }}
+            .status-pills {{
+                display: flex;
+                gap: 12px;
+            }}
+            .status-pill {{
+                background: rgba(255,255,255,0.2);
+                backdrop-filter: blur(8px);
+                padding: 8px 16px;
+                border-radius: 20px;
+                text-align: center;
+                min-width: 90px;
+            }}
+            .status-pill .label {{
+                font-size: 0.65rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                opacity: 0.9;
+                margin-bottom: 2px;
+            }}
+            .status-pill .value {{
+                font-size: 0.95rem;
+                font-weight: 600;
+            }}
+
+            /* Card */
+            .card {{
+                background: var(--white);
+                border-radius: var(--radius-lg);
+                border: 1px solid var(--gray-200);
+                margin-bottom: 20px;
+                overflow: hidden;
+            }}
+            .card-header {{
+                padding: 16px 20px;
+                border-bottom: 1px solid var(--gray-100);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }}
+            .card-icon {{
+                width: 36px;
+                height: 36px;
+                border-radius: var(--radius);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.1rem;
+            }}
+            .card-icon.green {{ background: var(--netafim-green-light); }}
+            .card-icon.blue {{ background: var(--water-blue-light); }}
+            .card-icon.yellow {{ background: var(--sun-yellow-light); }}
+            .card-title {{
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: var(--gray-800);
+            }}
+            .card-body {{
+                padding: 20px;
+            }}
+
+            /* Form Grid */
+            .form-grid {{
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 16px;
+            }}
+            .form-grid-3 {{ grid-template-columns: repeat(3, 1fr); }}
+            .form-grid-4 {{ grid-template-columns: repeat(4, 1fr); }}
+            .span-2 {{ grid-column: span 2; }}
+
+            /* Form Group */
+            .form-group {{ margin-bottom: 0; }}
+            .form-group label {{
+                display: block;
+                font-size: 0.8rem;
+                font-weight: 500;
+                color: var(--gray-600);
+                margin-bottom: 6px;
+            }}
+            .form-group select, .form-group input[type="text"], .form-group input[type="number"] {{
+                width: 100%;
+                padding: 10px 14px;
+                font-size: 0.9rem;
+                border: 1px solid var(--gray-300);
+                border-radius: var(--radius);
+                background: var(--white);
+                color: var(--gray-800);
+                transition: all 0.2s ease;
+                font-family: inherit;
+            }}
+            .form-group select:hover, .form-group input:hover {{
+                border-color: var(--gray-400);
+            }}
+            .form-group select:focus, .form-group input:focus {{
+                outline: none;
+                border-color: var(--netafim-green);
+                box-shadow: 0 0 0 3px rgba(0, 166, 81, 0.1);
+            }}
+            .form-group small {{
+                display: block;
+                font-size: 0.75rem;
+                color: var(--gray-400);
+                margin-top: 4px;
+            }}
+
+            /* Metric Display */
+            .metric-display {{
+                background: var(--gray-50);
+                border: 1px solid var(--gray-200);
+                border-radius: var(--radius);
+                padding: 12px;
+                text-align: center;
+            }}
+            .metric-value {{
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: var(--netafim-green);
+                line-height: 1.2;
+            }}
+            .metric-value.blue {{ color: var(--water-blue); }}
+            .metric-value.yellow {{ color: var(--sun-yellow); }}
+            .metric-label {{
+                font-size: 0.7rem;
+                color: var(--gray-500);
+                text-transform: uppercase;
+                letter-spacing: 0.3px;
+                margin-top: 2px;
+            }}
+
+            /* Info Alert */
+            .info-alert {{
+                background: var(--netafim-green-light);
+                border: 1px solid rgba(0, 166, 81, 0.2);
+                border-radius: var(--radius);
+                padding: 12px 16px;
+                font-size: 0.85rem;
+                color: var(--netafim-green-dark);
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .info-alert.blue {{
+                background: var(--water-blue-light);
+                border-color: rgba(3, 169, 244, 0.2);
+                color: var(--netafim-blue);
+            }}
+
+            /* Action Bar */
+            .action-bar {{
+                display: flex;
+                justify-content: flex-end;
+                gap: 12px;
+                padding: 16px 20px;
+                background: var(--gray-50);
+                border-top: 1px solid var(--gray-100);
+            }}
+            .btn {{
+                padding: 10px 20px;
+                font-size: 0.875rem;
+                border: none;
+                border-radius: var(--radius);
+                cursor: pointer;
+                font-weight: 600;
+                transition: all 0.2s ease;
+                font-family: inherit;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .btn-primary {{
+                background: var(--netafim-green);
+                color: var(--white);
+            }}
+            .btn-primary:hover {{
+                background: var(--netafim-green-dark);
+                transform: translateY(-1px);
+                box-shadow: var(--shadow-md);
+            }}
+            .btn-secondary {{
+                background: var(--white);
+                color: var(--gray-700);
+                border: 1px solid var(--gray-300);
+            }}
+            .btn-secondary:hover {{ background: var(--gray-50); }}
+
+            /* Message */
+            .message {{
+                margin: 0 0 16px 0;
+                padding: 12px 16px;
+                border-radius: var(--radius);
+                font-size: 0.875rem;
+                font-weight: 500;
+            }}
+            .message.success {{ background: var(--netafim-green-light); color: var(--netafim-green-dark); }}
+            .message.error {{ background: #fee2e2; color: #991b1b; }}
+
+            /* Responsive */
+            @media (max-width: 900px) {{
+                .sidebar {{ display: none; }}
+                .main-content {{ margin-left: 0; padding: 16px; }}
+                .mobile-nav {{
+                    display: flex;
+                    justify-content: center;
+                    gap: 8px;
+                    margin-bottom: 20px;
+                    background: var(--white);
+                    padding: 8px;
+                    border-radius: var(--radius-lg);
+                    box-shadow: var(--shadow);
+                }}
+                .status-pills {{ flex-wrap: wrap; }}
+            }}
+            @media (min-width: 901px) {{
+                .mobile-nav {{ display: none; }}
+            }}
+            @media (max-width: 600px) {{
+                .form-grid {{ grid-template-columns: 1fr; }}
+                .form-grid-3, .form-grid-4 {{ grid-template-columns: 1fr 1fr; }}
+                .status-banner {{ flex-direction: column; gap: 16px; align-items: flex-start; }}
+                .status-pills {{ width: 100%; justify-content: space-between; }}
+            }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>Farm Configuration v3</h1>
-                <p>Configure irrigation, growth stage, and canopy parameters</p>
-            </div>
-
-            <div class="nav-bar">
-                <a href="/dashboard" class="nav-btn">Dashboard</a>
-                <a href="/config" class="nav-btn active">Settings</a>
-                <a href="/raw-data" class="nav-btn">Raw Data</a>
-                <a href="/docs" class="nav-btn">API</a>
-            </div>
-
-            <div class="current-config">
-                <h3>Current Configuration - Day {current_day}</h3>
-                <div class="config-preview">
-                    <div class="config-item"><div class="config-item-label">Farm Name</div><div class="config-item-value">{current_config.get('farm_name', 'Not Set')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Crop Type</div><div class="config-item-value">{current_config.get('crop_type', 'Not Set')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Growth Day</div><div class="config-item-value">Day {current_day}</div></div>
-                    <div class="config-item"><div class="config-item-label">Growth Stage</div><div class="config-item-value">{current_config.get('crop_growth_stage', 'Not Set')[:20]}...</div></div>
-                    <div class="config-item"><div class="config-item-label">Plant Maturity</div><div class="config-item-value">{current_config.get('plant_maturity', 'Mature')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Soil Type</div><div class="config-item-value">{current_config.get('soil_type', 'Not Set')}</div></div>
-                    <div class="config-item"><div class="config-item-label">Canopy Radius</div><div class="config-item-value">{current_config.get('canopy_radius', 3.0)} m</div></div>
-                    <div class="config-item"><div class="config-item-label">Wetted %</div><div class="config-item-value">{current_config.get('wetted_pct', 50.0)}%</div></div>
+        <div class="page-wrapper">
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+                <div class="sidebar-logo">
+                    <h2><span>🌿</span> SmartIrrig</h2>
                 </div>
-            </div>
+                <nav class="sidebar-nav">
+                    <a href="/dashboard" class="nav-item">
+                        <span class="nav-icon">📊</span> Dashboard
+                    </a>
+                    <a href="/config" class="nav-item active">
+                        <span class="nav-icon">⚙️</span> Settings
+                    </a>
+                    <a href="/raw-data" class="nav-item">
+                        <span class="nav-icon">📈</span> Raw Data
+                    </a>
+                    <a href="/docs" class="nav-item">
+                        <span class="nav-icon">📄</span> API Docs
+                    </a>
+                </nav>
+            </aside>
 
-            <div class="config-form">
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Mobile Navigation -->
+                <nav class="mobile-nav">
+                    <a href="/dashboard" class="nav-item">Dashboard</a>
+                    <a href="/config" class="nav-item active">Settings</a>
+                    <a href="/raw-data" class="nav-item">Data</a>
+                    <a href="/docs" class="nav-item">API</a>
+                </nav>
+
+                <div class="page-header">
+                    <h1>Farm Settings</h1>
+                    <p>Configure your irrigation system parameters</p>
+                </div>
+
+                <!-- Status Banner -->
+                <div class="status-banner">
+                    <div class="status-banner-left">
+                        <h3>{current_config.get('farm_name', 'My Farm')}</h3>
+                        <p>{current_config.get('crop_type', 'Crop')} • {stage_short}</p>
+                    </div>
+                    <div class="status-pills">
+                        <div class="status-pill">
+                            <div class="label">Day</div>
+                            <div class="value">{current_day}</div>
+                        </div>
+                        <div class="status-pill">
+                            <div class="label">Maturity</div>
+                            <div class="value">{current_config.get('plant_maturity', 'Mature')}</div>
+                        </div>
+                        <div class="status-pill">
+                            <div class="label">Wetted</div>
+                            <div class="value">{current_config.get('wetted_pct', 50.0)}%</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="message"></div>
 
                 <form id="configForm">
-                    <div class="form-section">
-                        <h3>Farm Information</h3>
-                        <div class="form-group">
-                            <label for="farm_name">Farm Name:</label>
-                            <input type="text" id="farm_name" value="{current_config.get('farm_name', '')}" placeholder="Enter your farm name" required>
+                    <!-- Farm & Crop Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon green">🏡</div>
+                            <span class="card-title">Farm & Crop</span>
                         </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>Growth Stage Configuration</h3>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="crop_type">Crop Type:</label>
-                                <select id="crop_type" required>
-                                    <option value="">Select Crop Type</option>
-                                    <option value="Durian" {is_selected('crop_type', 'Durian')}>Durian</option>
-                                    <option value="Mangosteen" {is_selected('crop_type', 'Mangosteen')}>Mangosteen</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="growth_stage">Growth Stage (with Kc values):</label>
-                                <select id="growth_stage" onchange="updateDayRange()">
-                                    <option value="1-45" data-min="1" data-max="45" data-kc="0.5" data-mad="0.40" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & fruit setting (Days 1-45) - Kc: 0.5</option>
-                                    <option value="46-75" data-min="46" data-max="75" data-kc="0.6" data-mad="0.45" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early fruit growth (Days 46-75) - Kc: 0.6</option>
-                                    <option value="76-110" data-min="76" data-max="110" data-kc="0.85" data-mad="0.55" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit growth (Days 76-110) - Kc: 0.85</option>
-                                    <option value="111-140" data-min="111" data-max="140" data-kc="0.75" data-mad="0.60" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140) - Kc: 0.75</option>
-                                    <option value="141-290" data-min="141" data-max="290" data-kc="0.6" data-mad="0.70" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290) - Kc: 0.6</option>
-                                    <option value="291-320" data-min="291" data-max="320" data-kc="0.4" data-mad="0.50" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral initiation (Days 291-320) - Kc: 0.4</option>
-                                    <option value="321-365" data-min="321" data-max="365" data-kc="0.4" data-mad="0.45" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral development (Days 321-365) - Kc: 0.4</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="growth_day">Current Growth Day:</label>
-                                <input type="number" id="growth_day" value="{current_day}" min="1" max="365" required>
-                                <small id="day_range_hint" style="color:#666;">Day range: 1-365 (select stage first)</small>
-                            </div>
-                            <div class="form-group">
-                                <label>Current Kc Value:</label>
-                                <div id="kc_display" style="font-size: 1.5rem; font-weight: bold; color: #4CAF50; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">--</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>Plant Maturity Stage (C1)</h3>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="plant_maturity">Plant Maturity:</label>
-                                <select id="plant_maturity" onchange="updateMaturityInfo()" required>
-                                    <option value="Young" data-zr="0.30" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Young' else ''}>Young (Zr = 0.30m)</option>
-                                    <option value="Middle" data-zr="0.45" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Middle' else ''}>Middle (Zr = 0.45m)</option>
-                                    <option value="Mature" data-zr="0.60" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Mature' else ''}>Mature (Zr = 0.60m)</option>
-                                </select>
-                                <small style="color:#666;">Affects effective root zone (Zr) and MAD calculation</small>
-                            </div>
-                            <div class="form-group">
-                                <label>Effective Root Zone (Zr):</label>
-                                <div id="zr_display" style="font-size: 1.5rem; font-weight: bold; color: #FF9800; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">0.60 m</div>
-                            </div>
-                            <div class="form-group">
-                                <label>MAD Info:</label>
-                                <div id="mad_display" style="font-size: 0.9rem; color: #666; padding: 10px; background: #f5f5f5; border-radius: 8px; text-align: center;">Mid/Mature: MAD varies by stage</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>Soil & Irrigation System</h3>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="soil_type">Soil Type:</label>
-                                <select id="soil_type" required>
-                                    <option value="">Select Soil Type</option>
-                                    <option value="Sandy Loam" {is_selected('soil_type', 'Sandy Loam')}>Sandy Loam</option>
-                                    <option value="Loamy Sand" {is_selected('soil_type', 'Loamy Sand')}>Loamy Sand</option>
-                                    <option value="Loam" {is_selected('soil_type', 'Loam')}>Loam</option>
-                                    <option value="Sandy Clay Loam" {is_selected('soil_type', 'Sandy Clay Loam')}>Sandy Clay Loam</option>
-                                    <option value="Clay Loam" {is_selected('soil_type', 'Clay Loam')}>Clay Loam</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="irrigation_type">Irrigation Type:</label>
-                                <select id="irrigation_type" required>
-                                    <option value="">Select Irrigation Type</option>
-                                    <option value="Drip" {is_selected('irrigation_type', 'Drip')}>Drip (90% efficiency)</option>
-                                    <option value="Sprinkler" {is_selected('irrigation_type', 'Sprinkler')}>Sprinkler (80% efficiency)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>Irrigation System Parameters</h3>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="emitter_rate">Emitter Rate (L/h):</label>
-                                <select id="emitter_rate" required>
-                                    <option value="">Select Emitter Rate</option>
-                                    <option value="20" {is_selected('emitter_rate', 20)}>20</option>
-                                    <option value="30" {is_selected('emitter_rate', 30)}>30</option>
-                                    <option value="35" {is_selected('emitter_rate', 35)}>35</option>
-                                    <option value="40" {is_selected('emitter_rate', 40)}>40</option>
-                                    <option value="50" {is_selected('emitter_rate', 50)}>50</option>
-                                    <option value="58" {is_selected('emitter_rate', 58)}>58</option>
-                                    <option value="70" {is_selected('emitter_rate', 70)}>70</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="plant_spacing">Plant Spacing (m):</label>
-                                <select id="plant_spacing" required>
-                                    <option value="">Select Plant Spacing</option>
-                                    <option value="10" {is_selected('plant_spacing', 10)}>10</option>
-                                    <option value="11" {is_selected('plant_spacing', 11)}>11</option>
-                                    <option value="12" {is_selected('plant_spacing', 12)}>12</option>
-                                    <option value="15" {is_selected('plant_spacing', 15)}>15</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="num_sprinklers">Sprinklers per Tree:</label>
-                                <select id="num_sprinklers" onchange="updateWettedPct()" required>
-                                    <option value="">Select Number</option>
-                                    <option value="1" data-wetted="25" {is_selected('num_sprinklers', 1)}>1</option>
-                                    <option value="2" data-wetted="50" {is_selected('num_sprinklers', 2)}>2</option>
-                                    <option value="3" data-wetted="75" {is_selected('num_sprinklers', 3)}>3</option>
-                                    <option value="4" data-wetted="85" {is_selected('num_sprinklers', 4)}>4</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="canopy_radius">Canopy Radius (m):</label>
-                                <input type="number" id="canopy_radius" value="{current_config.get('canopy_radius', 3.0)}" min="0.5" max="10" step="0.5" required>
-                                <small style="color:#666;">Used for wetted area calculation</small>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-section">
-                        <h3>Wetted Area & Trunk Buffer (C2/C3)</h3>
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label for="wetted_pct">Wetted % (C2):</label>
-                                <input type="number" id="wetted_pct" value="{current_config.get('wetted_pct', 50.0)}" min="10" max="100" step="5" required>
-                                <small style="color:#666;">Default: 1 spr=25%, 2 spr=50%, 3 spr=75%, 4 spr=85%</small>
-                            </div>
-                            <div class="form-group">
-                                <label for="trunk_buffer_enabled">Trunk Buffer (C3):</label>
-                                <select id="trunk_buffer_enabled" onchange="toggleTrunkBuffer()" required>
-                                    <option value="false" {'selected' if not current_config.get('trunk_buffer_enabled', False) else ''}>No - Include full canopy area</option>
-                                    <option value="true" {'selected' if current_config.get('trunk_buffer_enabled', False) else ''}>Yes - Exclude area near trunk</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="trunk_radius_group" style="display: {'block' if current_config.get('trunk_buffer_enabled', False) else 'none'};">
-                                <label for="trunk_buffer_radius">Trunk Buffer Radius (m):</label>
-                                <input type="number" id="trunk_buffer_radius" value="{current_config.get('trunk_buffer_radius', 0.0)}" min="0" max="0.7" step="0.1">
-                                <small style="color:#666;">Max 0.7m, buffer capped at 20% of canopy area</small>
-                            </div>
-                            <div class="form-group">
-                                <label>Area Preview:</label>
-                                <div id="area_preview" style="font-size: 0.85rem; color: #666; padding: 10px; background: #f5f5f5; border-radius: 8px;">
-                                    Canopy: --m² | Root: --m² | Wetted: --m²
+                        <div class="card-body">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="farm_name">Farm Name</label>
+                                    <input type="text" id="farm_name" value="{current_config.get('farm_name', '')}" placeholder="Enter farm name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="crop_type">Crop Type</label>
+                                    <select id="crop_type" required>
+                                        <option value="">Select crop</option>
+                                        <option value="Durian" {is_selected('crop_type', 'Durian')}>Durian</option>
+                                        <option value="Mangosteen" {is_selected('crop_type', 'Mangosteen')}>Mangosteen</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="btn-group">
-                        <button type="submit" class="btn btn-primary">Save Configuration</button>
-                        <button type="button" class="btn btn-secondary" onclick="window.location.reload()">Reload Current</button>
+                    <!-- Growth Stage Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon green">🌱</div>
+                            <span class="card-title">Growth Stage</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-grid" style="margin-bottom: 16px;">
+                                <div class="form-group span-2">
+                                    <label for="growth_stage">Growth Stage</label>
+                                    <select id="growth_stage" onchange="updateDayRange()">
+                                        <option value="1-45" data-min="1" data-max="45" data-kc="0.5" data-mad="0.40" {is_selected('crop_growth_stage', 'Flowering & fruit setting (0-45 Days)')}>Flowering & Fruit Setting (Days 1-45)</option>
+                                        <option value="46-75" data-min="46" data-max="75" data-kc="0.6" data-mad="0.45" {is_selected('crop_growth_stage', 'Early fruit growth (46-75 days)')}>Early Fruit Growth (Days 46-75)</option>
+                                        <option value="76-110" data-min="76" data-max="110" data-kc="0.85" data-mad="0.55" {is_selected('crop_growth_stage', 'Fruit growth (76-110 days)')}>Fruit Growth (Days 76-110)</option>
+                                        <option value="111-140" data-min="111" data-max="140" data-kc="0.75" data-mad="0.60" {is_selected('crop_growth_stage', 'Fruit Maturity (111-140 days)')}>Fruit Maturity (Days 111-140)</option>
+                                        <option value="141-290" data-min="141" data-max="290" data-kc="0.6" data-mad="0.70" {is_selected('crop_growth_stage', 'Vegetative Growth (141-290 days)')}>Vegetative Growth (Days 141-290)</option>
+                                        <option value="291-320" data-min="291" data-max="320" data-kc="0.4" data-mad="0.50" {is_selected('crop_growth_stage', 'Floral initiation (291-320 days)')}>Floral Initiation (Days 291-320)</option>
+                                        <option value="321-365" data-min="321" data-max="365" data-kc="0.4" data-mad="0.45" {is_selected('crop_growth_stage', 'Floral development (321-365 days)')}>Floral Development (Days 321-365)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-grid form-grid-4">
+                                <div class="form-group">
+                                    <label for="growth_day">Current Day</label>
+                                    <input type="number" id="growth_day" value="{current_day}" min="1" max="365" required>
+                                    <small id="day_range_hint">Range: 1-365</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Kc Value</label>
+                                    <div class="metric-display">
+                                        <div class="metric-value" id="kc_display">--</div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="plant_maturity">Plant Maturity</label>
+                                    <select id="plant_maturity" onchange="updateMaturityInfo()" required>
+                                        <option value="Young" data-zr="0.30" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Young' else ''}>Young</option>
+                                        <option value="Middle" data-zr="0.45" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Middle' else ''}>Middle</option>
+                                        <option value="Mature" data-zr="0.60" {'selected' if current_config.get('plant_maturity', 'Mature') == 'Mature' else ''}>Mature</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Root Zone (Zr)</label>
+                                    <div class="metric-display">
+                                        <div class="metric-value yellow" id="zr_display">0.60m</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Soil & Irrigation Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon blue">💧</div>
+                            <span class="card-title">Soil & Irrigation</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-grid form-grid-4">
+                                <div class="form-group">
+                                    <label for="soil_type">Soil Type</label>
+                                    <select id="soil_type" required>
+                                        <option value="">Select</option>
+                                        <option value="Sandy Loam" {is_selected('soil_type', 'Sandy Loam')}>Sandy Loam</option>
+                                        <option value="Loamy Sand" {is_selected('soil_type', 'Loamy Sand')}>Loamy Sand</option>
+                                        <option value="Loam" {is_selected('soil_type', 'Loam')}>Loam</option>
+                                        <option value="Sandy Clay Loam" {is_selected('soil_type', 'Sandy Clay Loam')}>Sandy Clay Loam</option>
+                                        <option value="Clay Loam" {is_selected('soil_type', 'Clay Loam')}>Clay Loam</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="irrigation_type">Irrigation Type</label>
+                                    <select id="irrigation_type" required>
+                                        <option value="">Select</option>
+                                        <option value="Drip" {is_selected('irrigation_type', 'Drip')}>Drip (90%)</option>
+                                        <option value="Sprinkler" {is_selected('irrigation_type', 'Sprinkler')}>Sprinkler (80%)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="emitter_rate">Emitter Rate (L/h)</label>
+                                    <select id="emitter_rate" required>
+                                        <option value="">Select</option>
+                                        <option value="20" {is_selected('emitter_rate', 20)}>20</option>
+                                        <option value="30" {is_selected('emitter_rate', 30)}>30</option>
+                                        <option value="35" {is_selected('emitter_rate', 35)}>35</option>
+                                        <option value="40" {is_selected('emitter_rate', 40)}>40</option>
+                                        <option value="50" {is_selected('emitter_rate', 50)}>50</option>
+                                        <option value="58" {is_selected('emitter_rate', 58)}>58</option>
+                                        <option value="70" {is_selected('emitter_rate', 70)}>70</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="num_sprinklers">Sprinklers/Tree</label>
+                                    <select id="num_sprinklers" onchange="updateWettedPct()" required>
+                                        <option value="">Select</option>
+                                        <option value="1" data-wetted="25" {is_selected('num_sprinklers', 1)}>1</option>
+                                        <option value="2" data-wetted="50" {is_selected('num_sprinklers', 2)}>2</option>
+                                        <option value="3" data-wetted="75" {is_selected('num_sprinklers', 3)}>3</option>
+                                        <option value="4" data-wetted="85" {is_selected('num_sprinklers', 4)}>4</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Canopy & Coverage Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon yellow">🌳</div>
+                            <span class="card-title">Canopy & Coverage</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-grid form-grid-4">
+                                <div class="form-group">
+                                    <label for="plant_spacing">Tree Spacing (m)</label>
+                                    <select id="plant_spacing" required>
+                                        <option value="">Select</option>
+                                        <option value="10" {is_selected('plant_spacing', 10)}>10m</option>
+                                        <option value="11" {is_selected('plant_spacing', 11)}>11m</option>
+                                        <option value="12" {is_selected('plant_spacing', 12)}>12m</option>
+                                        <option value="15" {is_selected('plant_spacing', 15)}>15m</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="canopy_radius">Canopy Radius (m)</label>
+                                    <input type="number" id="canopy_radius" value="{current_config.get('canopy_radius', 3.0)}" min="0.5" max="10" step="0.5" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="wetted_pct">Wetted Area %</label>
+                                    <input type="number" id="wetted_pct" value="{current_config.get('wetted_pct', 50.0)}" min="10" max="100" step="5" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="trunk_buffer_enabled">Trunk Buffer</label>
+                                    <select id="trunk_buffer_enabled" onchange="toggleTrunkBuffer()" required>
+                                        <option value="false" {'selected' if not current_config.get('trunk_buffer_enabled', False) else ''}>Disabled</option>
+                                        <option value="true" {'selected' if current_config.get('trunk_buffer_enabled', False) else ''}>Enabled</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-grid" id="trunk_radius_row" style="display: {'grid' if current_config.get('trunk_buffer_enabled', False) else 'none'}; margin-top: 16px;">
+                                <div class="form-group">
+                                    <label for="trunk_buffer_radius">Buffer Radius (m)</label>
+                                    <input type="number" id="trunk_buffer_radius" value="{current_config.get('trunk_buffer_radius', 0.0)}" min="0" max="0.7" step="0.1">
+                                    <small>Max 0.7m, capped at 20% of canopy</small>
+                                </div>
+                            </div>
+                            <div class="info-alert blue" id="area_preview" style="margin-top: 16px;">
+                                <span>📐</span>
+                                <span>Canopy: --m² → Root: --m² → Wetted: --m²</span>
+                            </div>
+                        </div>
+                        <div class="action-bar">
+                            <button type="button" class="btn btn-secondary" onclick="window.location.reload()">Reset</button>
+                            <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                        </div>
                     </div>
                 </form>
-            </div>
+            </main>
         </div>
 
         <script>
@@ -3256,29 +3620,19 @@ async def configuration_page():
                 if (currentDay > maxDay) dayInput.value = maxDay;
 
                 // Update hint and Kc display
-                hintElement.textContent = `Allowed range: Day ${{minDay}} - ${{maxDay}}`;
-                kcDisplay.textContent = `Kc = ${{kc}}`;
+                hintElement.textContent = `Day ${{minDay}}-${{maxDay}}`;
+                kcDisplay.textContent = kc;
             }}
 
             // C1: Update Plant Maturity info
             function updateMaturityInfo() {{
                 const maturitySelect = document.getElementById('plant_maturity');
                 const zrDisplay = document.getElementById('zr_display');
-                const madDisplay = document.getElementById('mad_display');
 
                 const selectedOption = maturitySelect.options[maturitySelect.selectedIndex];
                 const zr = selectedOption.dataset.zr;
-                const maturity = selectedOption.value;
 
-                zrDisplay.textContent = `${{zr}} m`;
-
-                if (maturity === 'Young') {{
-                    madDisplay.textContent = 'Young: Fixed MAD (p=0.5)';
-                    madDisplay.style.color = '#4CAF50';
-                }} else {{
-                    madDisplay.textContent = 'Mid/Mature: MAD varies by stage';
-                    madDisplay.style.color = '#666';
-                }}
+                zrDisplay.textContent = `${{zr}}m`;
             }}
 
             // C2: Update wetted percentage based on sprinkler count
@@ -3296,8 +3650,8 @@ async def configuration_page():
             // C3: Toggle trunk buffer radius visibility
             function toggleTrunkBuffer() {{
                 const enabled = document.getElementById('trunk_buffer_enabled').value === 'true';
-                const radiusGroup = document.getElementById('trunk_radius_group');
-                radiusGroup.style.display = enabled ? 'block' : 'none';
+                const radiusRow = document.getElementById('trunk_radius_row');
+                radiusRow.style.display = enabled ? 'grid' : 'none';
 
                 if (!enabled) {{
                     document.getElementById('trunk_buffer_radius').value = 0;
@@ -3323,7 +3677,7 @@ async def configuration_page():
                 const wettedArea = rootArea * (wettedPct / 100);
 
                 document.getElementById('area_preview').innerHTML =
-                    `Canopy: ${{canopyArea.toFixed(1)}}m² | Root: ${{rootArea.toFixed(1)}}m² | Wetted: ${{wettedArea.toFixed(1)}}m²`;
+                    `<span>📐</span><span>Canopy: ${{canopyArea.toFixed(1)}}m² → Root: ${{rootArea.toFixed(1)}}m² → Wetted: ${{wettedArea.toFixed(1)}}m²</span>`;
             }}
 
             // Initialize on page load
