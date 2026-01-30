@@ -2166,17 +2166,40 @@ async def dashboard():
             else:
                 history_data['etc_values'].append(0)
 
-    # Current values
+    # Current values - try cycle_data first, then fall back to sensor_status (from /receive-15min)
     current_eto = latest_data.get("eto_mm_day", 0)
     current_etc = latest_irrigation.get("etc_mm_day", 0) if latest_irrigation else 0
     current_rad = latest_data.get("estimated_rad", 0)
+
+    # Temperature: use cycle_data if available, otherwise use sensor_status
     current_temp_min = latest_data.get("input_data", {}).get("tmin", 0)
     current_temp_max = latest_data.get("input_data", {}).get("tmax", 0)
+    if current_temp_min == 0 and current_temp_max == 0:
+        temp_val = sensor_status.get("temperature", {}).get("value")
+        if temp_val:
+            current_temp_min = temp_val
+            current_temp_max = temp_val
+
+    # Other sensors: use cycle_data if available, otherwise use sensor_status
     current_humidity = latest_data.get("input_data", {}).get("humidity", 0)
+    if current_humidity == 0:
+        current_humidity = sensor_status.get("humidity", {}).get("value") or 0
+
     current_wind = latest_data.get("input_data", {}).get("wind_speed", 0)
+    if current_wind == 0:
+        current_wind = sensor_status.get("wind", {}).get("value") or 0
+
     current_sunshine = latest_data.get("input_data", {}).get("sunshine_hours", 0)
+    if current_sunshine == 0:
+        current_sunshine = sensor_status.get("solar", {}).get("value") or 0
+
     current_pressure = latest_data.get("input_data", {}).get("pressure", 0) or 0
+    if current_pressure == 0:
+        current_pressure = sensor_status.get("pressure", {}).get("value") or 0
+
     current_vpd = latest_data.get("input_data", {}).get("vpd", 0) or 0
+    if current_vpd == 0:
+        current_vpd = sensor_status.get("vpd", {}).get("value") or 0
 
     irrigation_volume = latest_irrigation.get("irrigation_volume_l_per_tree", 0)
     irrigation_needed = latest_irrigation.get("irrigation_needed", False)
@@ -2460,13 +2483,13 @@ async def dashboard():
                         <div class="date-time">{datetime.now().strftime("Today %d %B")}</div>
                     </div>
                     <div class="temp-display">
-                        <div class="temp-current">{current_temp_max:.0f}deg</div>
+                        <div class="temp-current">{current_temp_max:.0f}°C</div>
                         <div class="temp-status">Current Temperature</div>
                     </div>
                     <div class="temp-range">
-                        <div class="temp-range-item"><div class="temp-range-label">Min</div><div class="temp-range-value">{current_temp_min:.0f}deg</div></div>
-                        <div class="temp-range-item"><div class="temp-range-label">Max</div><div class="temp-range-value">{current_temp_max:.0f}deg</div></div>
-                        <div class="temp-range-item"><div class="temp-range-label">Range</div><div class="temp-range-value">{current_temp_max - current_temp_min:.1f}deg</div></div>
+                        <div class="temp-range-item"><div class="temp-range-label">Min</div><div class="temp-range-value">{current_temp_min:.0f}°C</div></div>
+                        <div class="temp-range-item"><div class="temp-range-label">Max</div><div class="temp-range-value">{current_temp_max:.0f}°C</div></div>
+                        <div class="temp-range-item"><div class="temp-range-label">Range</div><div class="temp-range-value">{current_temp_max - current_temp_min:.1f}°C</div></div>
                     </div>
                 </div>
 
