@@ -105,6 +105,237 @@ growth_stage_config = {
     "last_update": None  # Last time day was updated
 }
 
+# =========================
+# Persistence Configuration
+# =========================
+DATA_DIR = Path("data")
+CONFIG_DIR = Path("config")
+PERSISTENCE_FILES = {
+    "irrigation_config": CONFIG_DIR / "irrigation_config.json",
+    "growth_stage": CONFIG_DIR / "growth_stage.json",
+    "15min_records": DATA_DIR / "15min_records.json",
+    "daily_prediction": DATA_DIR / "daily_prediction.json",
+    "last_state": DATA_DIR / "last_state.json",
+    "settings_history": DATA_DIR / "settings_history.json"
+}
+
+# Settings history - tracks when settings were changed
+# Each entry: {timestamp, settings_snapshot, change_type}
+settings_history = deque(maxlen=500)  # Keep last 500 settings changes
+
+# =========================
+# Persistence Functions
+# =========================
+def ensure_directories():
+    """Create data and config directories if they don't exist"""
+    DATA_DIR.mkdir(exist_ok=True)
+    CONFIG_DIR.mkdir(exist_ok=True)
+    logger.info(f"Ensured directories: {DATA_DIR}, {CONFIG_DIR}")
+
+def save_irrigation_config():
+    """Save irrigation config to file"""
+    try:
+        ensure_directories()
+        with open(PERSISTENCE_FILES["irrigation_config"], "w") as f:
+            json.dump(irrigation_config, f, indent=2, default=str)
+        logger.debug("Irrigation config saved")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save irrigation config: {e}")
+        return False
+
+def load_irrigation_config():
+    """Load irrigation config from file"""
+    global irrigation_config
+    try:
+        if PERSISTENCE_FILES["irrigation_config"].exists():
+            with open(PERSISTENCE_FILES["irrigation_config"], "r") as f:
+                loaded = json.load(f)
+                irrigation_config.update(loaded)
+            logger.info(f"Irrigation config loaded: {irrigation_config.get('farm_name', 'Unknown Farm')}")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load irrigation config: {e}")
+    return False
+
+def save_growth_stage_config():
+    """Save growth stage config to file"""
+    try:
+        ensure_directories()
+        save_data = {
+            "start_date": growth_stage_config["start_date"].isoformat() if growth_stage_config["start_date"] else None,
+            "current_day": growth_stage_config["current_day"],
+            "last_update": growth_stage_config["last_update"]
+        }
+        with open(PERSISTENCE_FILES["growth_stage"], "w") as f:
+            json.dump(save_data, f, indent=2)
+        logger.debug("Growth stage config saved")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save growth stage config: {e}")
+        return False
+
+def load_growth_stage_config():
+    """Load growth stage config from file"""
+    global growth_stage_config
+    try:
+        if PERSISTENCE_FILES["growth_stage"].exists():
+            with open(PERSISTENCE_FILES["growth_stage"], "r") as f:
+                loaded = json.load(f)
+                growth_stage_config["current_day"] = loaded.get("current_day", 1)
+                growth_stage_config["last_update"] = loaded.get("last_update")
+                if loaded.get("start_date"):
+                    growth_stage_config["start_date"] = date.fromisoformat(loaded["start_date"])
+            logger.info(f"Growth stage loaded: Day {growth_stage_config['current_day']}")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load growth stage config: {e}")
+    return False
+
+def save_15min_records():
+    """Save local 15-min records to file"""
+    try:
+        ensure_directories()
+        records_list = list(local_15min_records)
+        with open(PERSISTENCE_FILES["15min_records"], "w") as f:
+            json.dump(records_list, f, indent=2, default=str)
+        logger.debug(f"Saved {len(records_list)} 15-min records to file")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save 15-min records: {e}")
+        return False
+
+def load_15min_records():
+    """Load 15-min records from file"""
+    global local_15min_records
+    try:
+        if PERSISTENCE_FILES["15min_records"].exists():
+            with open(PERSISTENCE_FILES["15min_records"], "r") as f:
+                records_list = json.load(f)
+                # Clear and reload deque
+                local_15min_records.clear()
+                for record in records_list:
+                    local_15min_records.append(record)
+            logger.info(f"Loaded {len(local_15min_records)} 15-min records from file")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load 15-min records: {e}")
+    return False
+
+def save_daily_prediction():
+    """Save daily prediction result to file"""
+    try:
+        ensure_directories()
+        with open(PERSISTENCE_FILES["daily_prediction"], "w") as f:
+            json.dump(daily_prediction_result, f, indent=2, default=str)
+        logger.debug("Daily prediction saved")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save daily prediction: {e}")
+        return False
+
+def load_daily_prediction():
+    """Load daily prediction result from file"""
+    global daily_prediction_result
+    try:
+        if PERSISTENCE_FILES["daily_prediction"].exists():
+            with open(PERSISTENCE_FILES["daily_prediction"], "r") as f:
+                loaded = json.load(f)
+                daily_prediction_result.update(loaded)
+            logger.info(f"Daily prediction loaded: {daily_prediction_result.get('last_prediction_date', 'None')}")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load daily prediction: {e}")
+    return False
+
+def save_settings_history():
+    """Save settings history to file"""
+    try:
+        ensure_directories()
+        history_list = list(settings_history)
+        with open(PERSISTENCE_FILES["settings_history"], "w") as f:
+            json.dump(history_list, f, indent=2, default=str)
+        logger.debug(f"Saved {len(history_list)} settings history entries to file")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save settings history: {e}")
+        return False
+
+def load_settings_history():
+    """Load settings history from file"""
+    global settings_history
+    try:
+        if PERSISTENCE_FILES["settings_history"].exists():
+            with open(PERSISTENCE_FILES["settings_history"], "r") as f:
+                history_list = json.load(f)
+                settings_history.clear()
+                for entry in history_list:
+                    settings_history.append(entry)
+            logger.info(f"Loaded {len(settings_history)} settings history entries from file")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load settings history: {e}")
+    return False
+
+def record_settings_change(change_type: str, details: str = None):
+    """
+    Record a settings change with timestamp and current config snapshot
+    change_type: 'user_update', 'auto_growth_stage', 'initial', etc.
+    """
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "date": date.today().isoformat(),
+        "change_type": change_type,
+        "details": details,
+        "settings_snapshot": {
+            "farm_name": irrigation_config.get("farm_name"),
+            "crop_type": irrigation_config.get("crop_type"),
+            "crop_growth_stage": irrigation_config.get("crop_growth_stage"),
+            "growth_day": growth_stage_config.get("current_day"),
+            "soil_type": irrigation_config.get("soil_type"),
+            "irrigation_type": irrigation_config.get("irrigation_type"),
+            "emitter_rate": irrigation_config.get("emitter_rate"),
+            "num_sprinklers": irrigation_config.get("num_sprinklers"),
+            "canopy_radius": irrigation_config.get("canopy_radius"),
+            "plant_maturity": irrigation_config.get("plant_maturity"),
+            "wetted_pct": irrigation_config.get("wetted_pct"),
+            "trunk_buffer_enabled": irrigation_config.get("trunk_buffer_enabled"),
+            "trunk_buffer_radius": irrigation_config.get("trunk_buffer_radius")
+        }
+    }
+    settings_history.append(entry)
+    save_settings_history()
+    logger.info(f"Settings change recorded: {change_type} - {details}")
+    return entry
+
+def get_current_settings_for_record():
+    """Get current settings snapshot to include in 15-min records"""
+    return {
+        "growth_stage": irrigation_config.get("crop_growth_stage"),
+        "growth_day": growth_stage_config.get("current_day"),
+        "crop_type": irrigation_config.get("crop_type"),
+        "farm_name": irrigation_config.get("farm_name")
+    }
+
+def save_all_state():
+    """Save all persistent state to files"""
+    save_irrigation_config()
+    save_growth_stage_config()
+    save_15min_records()
+    save_daily_prediction()
+    save_settings_history()
+    logger.info("All state saved to disk")
+
+def load_all_state():
+    """Load all persistent state from files"""
+    ensure_directories()
+    load_irrigation_config()
+    load_growth_stage_config()
+    load_15min_records()
+    load_daily_prediction()
+    load_settings_history()
+    logger.info("All state loaded from disk")
+
 # Manual pump session tracking
 manual_pump_session = {
     "active": False,
@@ -231,35 +462,37 @@ def check_vpd_status(vpd: float, growth_stage: str) -> dict:
             }
 
 def update_sensor_status(sensor_name: str, value, online: bool = True):
-    """Update sensor status tracking with smart validation"""
+    """Update sensor status tracking - sensor is online if we receive valid data"""
     if sensor_name in sensor_status:
-        # Smart online detection based on sensor type and value
-        is_online = online
+        # Use the online flag passed in, but validate value is not None
+        is_online = online and value is not None
 
-        if value is None:
-            is_online = False
-        elif sensor_name == "solar":
-            # Solar: 0 W/m² could be valid at night, but we mark offline if exactly 0
-            # In production, ESP32 should send sensor_health status
-            is_online = value is not None and value > 0
-        elif sensor_name == "temperature":
-            # Temperature: valid range -40 to 60°C
-            is_online = value is not None and -40 <= value <= 60
-        elif sensor_name == "humidity":
-            # Humidity: valid range 0-100%
-            is_online = value is not None and 0 <= value <= 100
-        elif sensor_name == "pressure":
-            # Pressure: valid range 800-1100 hPa
-            is_online = value is not None and 800 <= value <= 1100
-        elif sensor_name == "wind":
-            # Wind: valid range 0-50 m/s (0 is valid - calm)
-            is_online = value is not None and 0 <= value <= 50
-        elif sensor_name == "rain":
-            # Rain: valid range 0-500 mm (0 is valid - no rain)
-            is_online = value is not None and 0 <= value <= 500
-        elif sensor_name == "vpd":
-            # VPD: valid range 0-5 kPa
-            is_online = value is not None and 0 <= value <= 5
+        # Additional range validation (but 0 is valid for all sensors)
+        if value is not None:
+            if sensor_name == "temperature":
+                # Temperature: valid range -40 to 60°C
+                is_online = online and -40 <= value <= 60
+            elif sensor_name == "humidity":
+                # Humidity: valid range 0-100%
+                is_online = online and 0 <= value <= 100
+            elif sensor_name == "pressure":
+                # Pressure: valid range 800-1100 hPa
+                is_online = online and 800 <= value <= 1100
+            elif sensor_name == "wind":
+                # Wind: valid range 0-50 m/s (0 is valid - calm)
+                is_online = online and 0 <= value <= 50
+            elif sensor_name == "solar":
+                # Solar: 0 W/m² is valid (nighttime) - range 0-2000 W/m²
+                is_online = online and 0 <= value <= 2000
+            elif sensor_name == "rain":
+                # Rain: valid range 0-500 mm (0 is valid - no rain)
+                is_online = online and 0 <= value <= 500
+            elif sensor_name == "vpd":
+                # VPD: valid range 0-5 kPa
+                is_online = online and 0 <= value <= 5
+            elif sensor_name == "sunshine":
+                # Sunshine: 0 minutes is valid (cloudy/night) - range 0-15 min per 15-min period
+                is_online = online and 0 <= value <= 15
 
         sensor_status[sensor_name] = {
             "online": is_online,
@@ -448,6 +681,57 @@ class InfluxDBRecovery:
 
         except Exception as e:
             logger.error(f"Failed to query 15-min records: {e}")
+            recovery_status["recovery_errors"].append({
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e)
+            })
+            return []
+
+    def query_15min_records_for_recovery(self, hours_back: int = 24):
+        """
+        Query 15-minute aggregate records for recovery (last N hours)
+        Uses weather_15min measurement (V5 architecture)
+        """
+        if not self.query_api:
+            if not self.connect():
+                return []
+
+        try:
+            query = f'''
+            from(bucket: "{INFLUXDB_CONFIG['bucket']}")
+                |> range(start: -{hours_back}h)
+                |> filter(fn: (r) => r["_measurement"] == "weather_15min")
+                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> sort(columns: ["_time"])
+            '''
+
+            logger.info(f"Querying InfluxDB for 15-min records (last {hours_back} hours)...")
+            tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
+
+            records = []
+            for table in tables:
+                for record in table.records:
+                    records.append({
+                        "timestamp": record.get_time().isoformat(),
+                        "temp_min_15": record.values.get("temp_min_15"),
+                        "temp_max_15": record.values.get("temp_max_15"),
+                        "temp_avg_15": record.values.get("temp_avg_15"),
+                        "rh_avg_15": record.values.get("rh_avg_15"),
+                        "pressure_avg_15": record.values.get("pressure_avg_15"),
+                        "wind_avg_15": record.values.get("wind_avg_15"),
+                        "wind_max_15": record.values.get("wind_max_15"),
+                        "solar_avg_15": record.values.get("solar_avg_15"),
+                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "rain_mm_15": record.values.get("rain_mm_15"),
+                        "vpd_avg_15": record.values.get("vpd_avg_15"),
+                        "device": record.values.get("device", "ESP32")
+                    })
+
+            logger.info(f"Retrieved {len(records)} 15-min records for recovery")
+            return records
+
+        except Exception as e:
+            logger.error(f"Failed to query 15-min records for recovery: {e}")
             recovery_status["recovery_errors"].append({
                 "timestamp": datetime.now().isoformat(),
                 "error": str(e)
@@ -688,6 +972,9 @@ async def run_daily_prediction(target_date: date = None):
 
             logger.info(f"DAILY IRRIGATION: {irrigation_result['recommendation']}")
 
+        # Auto-save daily prediction result to disk
+        save_daily_prediction()
+
         return daily_prediction_result
 
     except Exception as e:
@@ -697,32 +984,69 @@ async def run_daily_prediction(target_date: date = None):
         return daily
 
 # =========================
-# 6:00 AM Scheduler
+# 6:01 AM Scheduler - Combined Growth Day Update + Daily Prediction
 # =========================
 def daily_scheduler():
-    """Background thread that runs daily prediction at 6:00 AM"""
-    logger.info("Daily scheduler started - will run at 6:00 AM")
+    """
+    Background thread that runs at 6:01 AM daily:
+    1. Updates growth day (so prediction uses correct growth stage)
+    2. Runs daily ETo prediction for yesterday's data
+    """
+    logger.info("Daily scheduler started - will run at 6:01 AM")
 
     while True:
         now = datetime.now()
-        target_time = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        target_time = now.replace(hour=6, minute=1, second=0, microsecond=0)
 
-        # If it's past 6 AM today, schedule for tomorrow
+        # If it's past 6:01 AM today, schedule for tomorrow
         if now >= target_time:
             target_time += timedelta(days=1)
 
         # Calculate sleep duration
         sleep_seconds = (target_time - now).total_seconds()
-        logger.info(f"Next daily prediction scheduled for {target_time} (in {sleep_seconds/3600:.1f} hours)")
+        logger.info(f"Next daily tasks scheduled for {target_time} (in {sleep_seconds/3600:.1f} hours)")
 
-        # Sleep until 6:00 AM
+        # Sleep until 6:01 AM
         import time
         time.sleep(sleep_seconds)
 
-        # Run the daily prediction
-        logger.info("=== 6:00 AM - TRIGGERING DAILY PREDICTION ===")
+        logger.info("=" * 60)
+        logger.info("=== 6:01 AM - DAILY TASKS STARTING ===")
+        logger.info("=" * 60)
+
+        # STEP 1: Update growth day FIRST
+        logger.info("[STEP 1/2] Updating growth day...")
         try:
-            # Run in event loop
+            old_day = growth_stage_config["current_day"]
+            old_stage = irrigation_config.get("crop_growth_stage")
+
+            update_growth_day()
+            save_growth_stage_config()
+            save_irrigation_config()
+
+            new_day = growth_stage_config["current_day"]
+            new_stage = irrigation_config.get("crop_growth_stage")
+
+            logger.info(f"Growth day updated: Day {old_day} → Day {new_day}")
+
+            # Record settings change
+            if old_stage != new_stage:
+                record_settings_change(
+                    change_type="auto_growth_stage",
+                    details=f"Growth stage auto-changed from '{old_stage}' to '{new_stage}' (Day {old_day} → {new_day})"
+                )
+                logger.info(f"Growth stage changed: {old_stage} → {new_stage}")
+            else:
+                record_settings_change(
+                    change_type="daily_update",
+                    details=f"Daily growth day increment (Day {old_day} → {new_day})"
+                )
+        except Exception as e:
+            logger.error(f"Growth day update error: {e}")
+
+        # STEP 2: Run daily ETo prediction
+        logger.info("[STEP 2/2] Running daily ETo prediction...")
+        try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             result = loop.run_until_complete(run_daily_prediction())
@@ -735,10 +1059,60 @@ def daily_scheduler():
         except Exception as e:
             logger.error(f"Daily prediction error: {e}")
 
+        logger.info("=" * 60)
+        logger.info("=== 6:01 AM - DAILY TASKS COMPLETE ===")
+        logger.info("=" * 60)
+
 # =========================
-# Model Loading Function
+# Model Loading Functions
 # =========================
+def load_models_only():
+    """Load ML models without resetting irrigation config (for startup after loading saved config)"""
+    try:
+        logger.info("Loading models and scalers...")
+        models["rf_model"] = pickle.load(open(str(MODEL_FILES["rf_model"]), "rb"))
+        models["mlp_model"] = pickle.load(open(str(MODEL_FILES["mlp_model"]), "rb"))
+        models["scaler_rad"] = pickle.load(open(str(MODEL_FILES["scaler_rad"]), "rb"))
+        models["scaler_eto"] = pickle.load(open(str(MODEL_FILES["scaler_eto"]), "rb"))
+        models["metadata"] = json.load(open(str(MODEL_FILES["metadata"]), "r"))
+        models["loaded_at"] = datetime.now().isoformat()
+        logger.info("Models loaded successfully")
+
+        # Only set default config if no saved config was loaded
+        global irrigation_config
+        if not irrigation_config:
+            irrigation_config = get_default_irrigation_config()
+            logger.info("No saved config found - using defaults")
+        else:
+            logger.info(f"Using saved irrigation config: {irrigation_config.get('farm_name', 'Unknown')}")
+
+    except Exception as e:
+        logger.error(f"Failed to load models: {e}")
+        raise
+
+def get_default_irrigation_config():
+    """Return default irrigation configuration"""
+    return {
+        "crop_type": "Durian",
+        "crop_growth_stage": "Fruit growth (76-110 days)",
+        "soil_type": "Loam",
+        "irrigation_type": "Sprinkler",
+        "emitter_rate": 40.0,
+        "plant_spacing": 10.0,
+        "num_sprinklers": 2,
+        "farm_name": "ESP32 Farm",
+        "canopy_radius": 3.0,
+        # C1: Plant Maturity Stage
+        "plant_maturity": "Mature",  # Young, Middle, Mature
+        # C2: Wetted percentage
+        "wetted_pct": 50.0,  # Default for 2 sprinklers
+        # C3: Trunk buffer
+        "trunk_buffer_enabled": False,
+        "trunk_buffer_radius": 0.0
+    }
+
 def load_models():
+    """Original load_models function - loads models AND sets default config (for fresh start)"""
     try:
         logger.info("Loading models and scalers...")
         models["rf_model"] = pickle.load(open(str(MODEL_FILES["rf_model"]), "rb"))
@@ -750,24 +1124,7 @@ def load_models():
         logger.info("Models loaded successfully")
 
         global irrigation_config
-        irrigation_config = {
-            "crop_type": "Durian",
-            "crop_growth_stage": "Fruit growth (76-110 days)",
-            "soil_type": "Loam",
-            "irrigation_type": "Sprinkler",
-            "emitter_rate": 40.0,
-            "plant_spacing": 10.0,
-            "num_sprinklers": 2,
-            "farm_name": "ESP32 Farm",
-            "canopy_radius": 3.0,
-            # C1: Plant Maturity Stage
-            "plant_maturity": "Mature",  # Young, Middle, Mature
-            # C2: Wetted percentage
-            "wetted_pct": 50.0,  # Default for 2 sprinklers
-            # C3: Trunk buffer
-            "trunk_buffer_enabled": False,
-            "trunk_buffer_radius": 0.0
-        }
+        irrigation_config = get_default_irrigation_config()
         logger.info("Default irrigation config set")
 
     except Exception as e:
@@ -778,65 +1135,168 @@ def load_models():
 # Startup Recovery Check
 # =========================
 async def check_and_recover_missed_data():
+    """
+    Enhanced recovery: Check for gaps between local data and InfluxDB
+    Uses weather_15min measurement (V5 architecture)
+    """
     global last_processed_timestamp, recovery_status
 
     logger.info("Checking for missed data to recover...")
     recovery_status["last_recovery_attempt"] = datetime.now().isoformat()
 
-    records = influx_recovery.query_missed_data(hours_back=24)
+    # First, determine what data we already have locally
+    local_count = len(local_15min_records)
+    latest_local_timestamp = None
+
+    if local_15min_records:
+        # Get the latest timestamp from local records
+        for record in reversed(list(local_15min_records)):
+            ts = record.get("timestamp") or record.get("received_at")
+            if ts:
+                latest_local_timestamp = ts
+                break
+
+    logger.info(f"Local records: {local_count}, Latest timestamp: {latest_local_timestamp}")
+
+    # Query InfluxDB for records we might be missing
+    # If we have local data, only query for newer records
+    hours_to_query = 24
+    if latest_local_timestamp:
+        try:
+            # Parse the timestamp and calculate hours since
+            if "T" in latest_local_timestamp:
+                last_dt = datetime.fromisoformat(latest_local_timestamp.replace("Z", ""))
+            else:
+                last_dt = datetime.strptime(latest_local_timestamp, "%Y-%m-%d %H:%M:%S")
+            hours_since = (datetime.now() - last_dt).total_seconds() / 3600
+            hours_to_query = max(1, min(int(hours_since) + 1, 48))  # Cap at 48 hours
+            logger.info(f"Querying InfluxDB for last {hours_to_query} hours to fill gaps")
+        except Exception as e:
+            logger.warning(f"Could not parse latest timestamp, using 24h recovery: {e}")
+
+    # Query InfluxDB for 15-min records (V5 architecture)
+    records = influx_recovery.query_15min_records_for_recovery(hours_back=hours_to_query)
 
     if records:
         recovered_count = 0
+        existing_timestamps = set()
+
+        # Build set of existing timestamps to avoid duplicates
+        for record in local_15min_records:
+            ts = record.get("timestamp") or record.get("received_at")
+            if ts:
+                existing_timestamps.add(ts[:19])  # Normalize to seconds precision
+
         for record in records:
             try:
-                if all(record.get(k) is not None for k in ["temp_min", "temp_max", "humidity", "wind_speed", "sunshine_hours"]):
-                    prediction_data = {
-                        "timestamp": record["timestamp"],
-                        "device_id": record.get("device", "ESP32_RECOVERED"),
-                        "input_data": {
-                            "tmin": record["temp_min"],
-                            "tmax": record["temp_max"],
-                            "temp_avg": record.get("temp_avg", (record["temp_min"] + record["temp_max"]) / 2),
-                            "humidity": record["humidity"],
-                            "wind_speed": record["wind_speed"],
-                            "sunshine_hours": record["sunshine_hours"],
-                            "rainfall_mm": record.get("rainfall_mm", 0),
-                            "pressure": record.get("pressure"),
-                            "vpd": record.get("vpd")
-                        },
-                        "recovered": True
-                    }
-                    prediction_history.append(prediction_data)
-                    recovered_count += 1
+                record_ts = record.get("timestamp", "")[:19]
+
+                # Skip if we already have this record
+                if record_ts in existing_timestamps:
+                    continue
+
+                # Add to local_15min_records for chart updates
+                local_record = {
+                    "timestamp": record["timestamp"],
+                    "received_at": datetime.now().isoformat(),
+                    "temp_min_15": record.get("temp_min_15"),
+                    "temp_max_15": record.get("temp_max_15"),
+                    "temp_avg_15": record.get("temp_avg_15"),
+                    "rh_avg_15": record.get("rh_avg_15"),
+                    "pressure_avg_15": record.get("pressure_avg_15"),
+                    "wind_avg_15": record.get("wind_avg_15"),
+                    "wind_max_15": record.get("wind_max_15"),
+                    "solar_avg_15": record.get("solar_avg_15"),
+                    "sunshine_min_15": record.get("sunshine_min_15"),
+                    "rain_mm_15": record.get("rain_mm_15"),
+                    "vpd_avg_15": record.get("vpd_avg_15"),
+                    "device": record.get("device", "ESP32_RECOVERED"),
+                    "recovered": True
+                }
+                local_15min_records.append(local_record)
+                recovered_count += 1
+
             except Exception as e:
                 logger.error(f"Error processing recovered record: {e}")
 
         recovery_status["records_recovered"] = recovered_count
         recovery_status["last_successful_recovery"] = datetime.now().isoformat()
-        logger.info(f"Recovered {recovered_count} records from InfluxDB")
+        logger.info(f"Recovered {recovered_count} new records from InfluxDB")
+
+        # Save the recovered records
+        if recovered_count > 0:
+            save_15min_records()
 
         if records:
             last_processed_timestamp = records[-1]["timestamp"]
     else:
-        logger.info("No missed data to recover")
+        logger.info("No missed data to recover from InfluxDB")
+
 
 # =========================
 # Lifespan Event Handler
 # =========================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    load_models()
-    await valve_controller.get_valve_status()
-    await check_and_recover_missed_data()
-    update_growth_day()  # Initialize growth day
+    # === STARTUP ===
+    logger.info("=" * 60)
+    logger.info("JETSON EDGE V3 - STARTING UP")
+    logger.info("=" * 60)
 
-    # Start 6:00 AM daily scheduler in background thread
+    # Step 1: Load saved state from disk FIRST
+    logger.info("[STARTUP] Step 1: Loading saved state from disk...")
+    load_all_state()
+
+    # Step 2: Load ML models (but don't overwrite config if already loaded)
+    logger.info("[STARTUP] Step 2: Loading ML models...")
+    load_models_only()  # New function that doesn't reset config
+
+    # Step 3: Check valve status
+    logger.info("[STARTUP] Step 3: Checking valve status...")
+    await valve_controller.get_valve_status()
+
+    # Step 4: Recover any missed data from InfluxDB
+    logger.info("[STARTUP] Step 4: Recovering missed data from InfluxDB...")
+    await check_and_recover_missed_data()
+
+    # Step 5: Update growth day based on saved start_date
+    logger.info("[STARTUP] Step 5: Updating growth day...")
+    update_growth_day()
+    save_growth_stage_config()  # Save the updated day
+
+    # Step 6: Start background scheduler
+    logger.info("[STARTUP] Step 6: Starting 6:01 AM daily scheduler...")
+
+    # Combined 6:01 AM scheduler (growth day update + daily prediction)
     scheduler_thread = threading.Thread(target=daily_scheduler, daemon=True)
     scheduler_thread.start()
-    logger.info("6:00 AM daily prediction scheduler started")
+    logger.info("6:01 AM daily scheduler started (growth day + ETo prediction)")
+
+    logger.info("=" * 60)
+    logger.info("JETSON EDGE V3 - STARTUP COMPLETE")
+    logger.info(f"  Farm: {irrigation_config.get('farm_name', 'Unknown')}")
+    logger.info(f"  Growth Day: {growth_stage_config['current_day']}")
+    logger.info(f"  Growth Stage: {irrigation_config.get('crop_growth_stage', 'Unknown')}")
+    logger.info(f"  Local Records: {len(local_15min_records)}")
+    logger.info(f"  Next daily tasks: 6:01 AM")
+    logger.info("=" * 60)
 
     yield
+
+    # === SHUTDOWN ===
+    logger.info("=" * 60)
+    logger.info("JETSON EDGE V3 - SHUTTING DOWN")
+    logger.info("=" * 60)
+
+    # Save all state before shutdown
+    logger.info("[SHUTDOWN] Saving all state to disk...")
+    save_all_state()
+
+    # Close InfluxDB connection
     influx_recovery.close()
+
+    logger.info("JETSON EDGE V3 - SHUTDOWN COMPLETE")
+    logger.info("=" * 60)
 
 # =========================
 # FastAPI App with Lifespan
@@ -1702,12 +2162,23 @@ async def set_growth_stage(config: GrowthStageConfig):
 
     logger.info(f"Growth stage set to Day {config.start_day} ({new_stage})")
 
+    # Auto-save configs to disk
+    save_growth_stage_config()
+    save_irrigation_config()
+
+    # Record settings change for history tracking
+    record_settings_change(
+        change_type="user_growth_stage",
+        details=f"User set growth day to {config.start_day} ({new_stage})"
+    )
+
     return {
         "status": "success",
         "current_day": growth_stage_config["current_day"],
         "growth_stage": new_stage,
         "start_date": growth_stage_config["start_date"].isoformat() if growth_stage_config["start_date"] else None,
-        "vpd_range": VPD_RANGES.get(new_stage, {})
+        "vpd_range": VPD_RANGES.get(new_stage, {}),
+        "persisted_to_disk": True
     }
 
 @app.get("/growth-stage/status")
@@ -1964,7 +2435,9 @@ async def receive_15min_data(data: dict):
             "rain_mm_15": data.get("rainfall", data.get("rainfall_mm", 0)),
             "vpd_avg_15": data.get("vpd"),
             "device": data.get("device_id", "ESP32"),
-            "aggregate_number": data.get("aggregate_number", 0)
+            "aggregate_number": data.get("aggregate_number", 0),
+            # Include current settings with each record for historical tracking
+            "settings": get_current_settings_for_record()
         }
 
         # Store locally
@@ -1994,13 +2467,10 @@ async def receive_15min_data(data: dict):
         if record["wind_avg_15"] is not None:
             update_sensor_status("wind", record["wind_avg_15"], wind_online)
 
-        # Solar - special handling: 0 W/m² = offline unless ESP32 explicitly says online
+        # Solar - 0 W/m² is valid (nighttime), sensor is online if we received a value
         solar_value = record["solar_avg_15"]
-        solar_online = sensor_health.get("solar", None)  # None means use smart detection
-        if solar_online is None:
-            # Smart detection: solar sensor is online only if value > 0
-            # At night, ESP32 should send sensor_health.solar = true to indicate sensor is working
-            solar_online = solar_value is not None and solar_value > 0
+        solar_online = sensor_health.get("solar", True) if sensor_health else True
+        # If we received a value (including 0), sensor is working
         if solar_value is not None:
             update_sensor_status("solar", solar_value, solar_online)
 
@@ -2027,6 +2497,9 @@ async def receive_15min_data(data: dict):
         sensors_online = sum(1 for s in sensor_status.values() if s.get("online", False))
         sensors_total = len(sensor_status)
 
+        # Auto-save 15-min records to disk (every record to ensure no data loss)
+        save_15min_records()
+
         return {
             "status": "success",
             "message": "15-min data received and stored",
@@ -2041,7 +2514,8 @@ async def receive_15min_data(data: dict):
             "local_storage": {
                 "total_records": len(local_15min_records),
                 "today_records": today_records,
-                "today_coverage_pct": round(today_records / 96 * 100, 1)
+                "today_coverage_pct": round(today_records / 96 * 100, 1),
+                "persisted_to_disk": True
             },
             "sensor_status": {
                 "online_count": sensors_online,
@@ -2271,7 +2745,17 @@ async def set_irrigation_config(config: IrrigationConfig):
     global irrigation_config
     irrigation_config = config.dict()
     logger.info(f"Irrigation config updated: {config.farm_name} - {config.crop_type}")
-    return {"status": "success", "message": "Irrigation configuration updated", "config": irrigation_config}
+
+    # Auto-save config to disk
+    save_irrigation_config()
+
+    # Record settings change for history tracking
+    record_settings_change(
+        change_type="user_update",
+        details=f"User updated irrigation config: {config.farm_name}"
+    )
+
+    return {"status": "success", "message": "Irrigation configuration updated and saved", "config": irrigation_config, "persisted_to_disk": True}
 
 @app.get("/irrigation/config")
 async def get_irrigation_config():
@@ -2283,9 +2767,91 @@ async def get_latest_irrigation():
         return irrigation_history[-1]
     return {"message": "No irrigation recommendations available"}
 
+@app.get("/settings/history")
+async def get_settings_history(limit: int = 50):
+    """Get settings change history with timestamps"""
+    history_list = list(settings_history)
+    history_list.reverse()  # Most recent first
+    return {
+        "total_entries": len(settings_history),
+        "showing": min(limit, len(history_list)),
+        "history": history_list[:limit]
+    }
+
 @app.get("/irrigation/history")
 async def get_irrigation_history():
     return list(irrigation_history)
+
+# =========================
+# Persistence Status & Control
+# =========================
+@app.get("/persistence/status")
+async def get_persistence_status():
+    """Get persistence status - shows what's saved and file locations"""
+    files_status = {}
+    for name, path in PERSISTENCE_FILES.items():
+        files_status[name] = {
+            "path": str(path),
+            "exists": path.exists(),
+            "size_bytes": path.stat().st_size if path.exists() else 0,
+            "modified": datetime.fromtimestamp(path.stat().st_mtime).isoformat() if path.exists() else None
+        }
+
+    return {
+        "status": "ok",
+        "directories": {
+            "data": str(DATA_DIR),
+            "config": str(CONFIG_DIR),
+            "data_exists": DATA_DIR.exists(),
+            "config_exists": CONFIG_DIR.exists()
+        },
+        "files": files_status,
+        "in_memory": {
+            "irrigation_config": bool(irrigation_config),
+            "growth_stage_config": {
+                "current_day": growth_stage_config["current_day"],
+                "start_date": growth_stage_config["start_date"].isoformat() if growth_stage_config["start_date"] else None
+            },
+            "local_15min_records_count": len(local_15min_records),
+            "daily_prediction_date": daily_prediction_result.get("last_prediction_date")
+        }
+    }
+
+@app.post("/persistence/save")
+async def force_save_all():
+    """Force save all state to disk"""
+    try:
+        save_all_state()
+        return {
+            "status": "success",
+            "message": "All state saved to disk",
+            "saved": {
+                "irrigation_config": PERSISTENCE_FILES["irrigation_config"].exists(),
+                "growth_stage": PERSISTENCE_FILES["growth_stage"].exists(),
+                "15min_records": PERSISTENCE_FILES["15min_records"].exists(),
+                "daily_prediction": PERSISTENCE_FILES["daily_prediction"].exists()
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save state: {e}")
+
+@app.post("/persistence/reload")
+async def force_reload_all():
+    """Force reload all state from disk"""
+    try:
+        load_all_state()
+        return {
+            "status": "success",
+            "message": "All state reloaded from disk",
+            "loaded": {
+                "irrigation_config": bool(irrigation_config),
+                "growth_stage_day": growth_stage_config["current_day"],
+                "15min_records_count": len(local_15min_records),
+                "daily_prediction_date": daily_prediction_result.get("last_prediction_date")
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reload state: {e}")
 
 # =========================
 # Raw Sensor Data Page
@@ -2305,6 +2871,18 @@ async def raw_sensor_data_page():
         if timestamp and len(timestamp) > 19:
             timestamp = timestamp[:19]  # Trim to readable format
 
+        # Get settings from record (if available)
+        settings = record.get("settings", {})
+        growth_stage = settings.get("growth_stage", "N/A")
+        growth_day = settings.get("growth_day", "N/A")
+
+        # Shorten growth stage for display
+        if growth_stage and growth_stage != "N/A":
+            # Extract just the main part, e.g., "Fruit growth" from "Fruit growth (76-110 days)"
+            stage_short = growth_stage.split("(")[0].strip() if "(" in growth_stage else growth_stage
+        else:
+            stage_short = "N/A"
+
         table_rows += f"""
         <tr>
             <td>{i+1}</td>
@@ -2317,11 +2895,12 @@ async def raw_sensor_data_page():
             <td>{record.get('sunshine_min_15', 'N/A')}</td>
             <td>{record.get('rain_mm_15', 'N/A')}</td>
             <td>{record.get('vpd_avg_15', 'N/A')}</td>
+            <td title="{growth_stage}">Day {growth_day}<br><small>{stage_short}</small></td>
         </tr>
         """
 
     if not table_rows:
-        table_rows = "<tr><td colspan='10' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
+        table_rows = "<tr><td colspan='11' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
 
     # Get storage stats
     today = date.today()
@@ -2657,6 +3236,7 @@ async def raw_sensor_data_page():
                                 <th>Sunshine (min)</th>
                                 <th>Rain (mm)</th>
                                 <th>VPD (kPa)</th>
+                                <th>Growth Stage</th>
                             </tr>
                         </thead>
                         <tbody>
