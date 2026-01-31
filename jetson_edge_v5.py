@@ -606,9 +606,13 @@ def load_latest_sensor_data_from_influxdb():
                     logger.info(f"Recovered cycle {rec.get('cycle')}/96 for {rec.get('cycle_date')}")
 
     # Sort local_15min_records by cycle_date and cycle number
+    # deque doesn't have sort(), so convert to list, sort, and rebuild
     def sort_key(r):
-        return (r.get("cycle_date", ""), r.get("cycle", 0))
-    local_15min_records.sort(key=sort_key)
+        return (r.get("cycle_date", "") or "", r.get("cycle", 0) or 0)
+    sorted_records = sorted(list(local_15min_records), key=sort_key)
+    local_15min_records.clear()
+    for rec in sorted_records:
+        local_15min_records.append(rec)
 
     # Update sensor status with latest values
     if latest:
