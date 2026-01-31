@@ -4768,10 +4768,10 @@ async def dashboard():
             }}
             .sensor-status.online .sensor-status-dot {{ background: var(--success); }}
             .sensor-status.online {{ color: var(--success); }}
-            .sensor-status.standby .sensor-status-dot {{ background: var(--warning); }}
-            .sensor-status.standby {{ color: var(--warning); }}
-            .sensor-status.offline .sensor-status-dot {{ background: var(--gray-400); }}
-            .sensor-status.offline {{ color: var(--gray-400); }}
+            .sensor-status.standby .sensor-status-dot {{ background: #F59E0B; }}
+            .sensor-status.standby {{ color: #F59E0B; }}
+            .sensor-status.offline .sensor-status-dot {{ background: var(--danger); }}
+            .sensor-status.offline {{ color: var(--danger); }}
             .sensor-name {{ font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px; }}
             .sensor-value {{ font-size: 1.5rem; font-weight: 700; color: var(--gray-800); }}
             .sensor-unit {{ font-size: 0.8rem; color: var(--gray-500); font-weight: 400; }}
