@@ -4005,6 +4005,50 @@ async def raw_sensor_data_page():
                     </div>
                 </div>
 
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button onclick="openImportModal()" style="display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.9rem;">
+                        <span>📥</span> <span data-en="Import from InfluxDB" data-th="นำเข้าจาก InfluxDB">Import from InfluxDB</span>
+                    </button>
+                    <button onclick="clearTable()" style="display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--danger); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 0.9rem;">
+                        <span>🗑️</span> <span data-en="Clear Table" data-th="ล้างตาราง">Clear Table</span>
+                    </button>
+                </div>
+
+                <!-- Import Modal -->
+                <div id="importModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
+                    <div style="background: white; padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+                        <h3 style="margin: 0 0 16px 0; color: var(--gray-800);">📥 <span data-en="Import from InfluxDB" data-th="นำเข้าจาก InfluxDB">Import from InfluxDB</span></h3>
+                        <p style="color: var(--gray-600); margin-bottom: 20px; font-size: 0.9rem;" data-en="Select date range to import cycle data:" data-th="เลือกช่วงวันที่เพื่อนำเข้าข้อมูล:">Select date range to import cycle data:</p>
+
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--gray-200); border-radius: 8px; cursor: pointer; transition: all 0.2s;" onclick="this.querySelector('input').checked = true; document.querySelectorAll('.date-option').forEach(el => el.style.borderColor = 'var(--gray-200)'); this.style.borderColor = 'var(--primary)';" class="date-option">
+                                <input type="radio" name="dateRange" value="today" checked style="width: 18px; height: 18px;">
+                                <span><strong data-en="Today" data-th="วันนี้">Today</strong> ({date.today().isoformat()})</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--gray-200); border-radius: 8px; cursor: pointer; transition: all 0.2s;" onclick="this.querySelector('input').checked = true; document.querySelectorAll('.date-option').forEach(el => el.style.borderColor = 'var(--gray-200)'); this.style.borderColor = 'var(--primary)';" class="date-option">
+                                <input type="radio" name="dateRange" value="yesterday" style="width: 18px; height: 18px;">
+                                <span><strong data-en="Yesterday" data-th="เมื่อวาน">Yesterday</strong> ({(date.today() - timedelta(days=1)).isoformat()})</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--gray-200); border-radius: 8px; cursor: pointer; transition: all 0.2s;" onclick="this.querySelector('input').checked = true; document.querySelectorAll('.date-option').forEach(el => el.style.borderColor = 'var(--gray-200)'); this.style.borderColor = 'var(--primary)';" class="date-option">
+                                <input type="radio" name="dateRange" value="both" style="width: 18px; height: 18px;">
+                                <span><strong data-en="Both Days" data-th="ทั้งสองวัน">Both Days</strong></span>
+                            </label>
+                        </div>
+
+                        <div id="importStatus" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem;"></div>
+
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button onclick="closeImportModal()" style="padding: 10px 20px; background: var(--gray-200); color: var(--gray-700); border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                                <span data-en="Cancel" data-th="ยกเลิก">Cancel</span>
+                            </button>
+                            <button onclick="importData()" id="importBtn" style="padding: 10px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">
+                                <span data-en="Import" data-th="นำเข้า">Import</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Data Table Section -->
                 <div class="section-header">
                     <div class="section-icon">📊</div>
@@ -4053,6 +4097,103 @@ async def raw_sensor_data_page():
                     el.textContent = el.getAttribute('data-' + lang);
                 }});
             }}
+
+            // Clear Table Function
+            async function clearTable() {{
+                const lang = localStorage.getItem('aquasense_lang') || 'en';
+                const confirmMsg = lang === 'th' ? 'คุณต้องการล้างข้อมูลทั้งหมดใช่หรือไม่?' : 'Are you sure you want to clear all data?';
+
+                if (!confirm(confirmMsg)) return;
+
+                try {{
+                    const response = await fetch('/api/raw-data/clear', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }}
+                    }});
+                    const result = await response.json();
+
+                    if (result.success) {{
+                        const msg = lang === 'th' ? `ล้างข้อมูลแล้ว ${{result.records_cleared}} รายการ` : `Cleared ${{result.records_cleared}} records`;
+                        alert(msg);
+                        location.reload();
+                    }} else {{
+                        alert('Error: ' + result.message);
+                    }}
+                }} catch (error) {{
+                    alert('Error: ' + error.message);
+                }}
+            }}
+
+            // Import Modal Functions
+            function openImportModal() {{
+                document.getElementById('importModal').style.display = 'flex';
+                document.getElementById('importStatus').style.display = 'none';
+                // Reset selection to first option
+                document.querySelector('input[name="dateRange"][value="today"]').checked = true;
+                document.querySelectorAll('.date-option').forEach((el, i) => {{
+                    el.style.borderColor = i === 0 ? 'var(--primary)' : 'var(--gray-200)';
+                }});
+            }}
+
+            function closeImportModal() {{
+                document.getElementById('importModal').style.display = 'none';
+            }}
+
+            async function importData() {{
+                const lang = localStorage.getItem('aquasense_lang') || 'en';
+                const dateRange = document.querySelector('input[name="dateRange"]:checked').value;
+                const importBtn = document.getElementById('importBtn');
+                const statusDiv = document.getElementById('importStatus');
+
+                // Show loading state
+                importBtn.disabled = true;
+                importBtn.innerHTML = lang === 'th' ? '⏳ กำลังนำเข้า...' : '⏳ Importing...';
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = 'var(--primary-light)';
+                statusDiv.style.color = 'var(--primary)';
+                statusDiv.innerHTML = lang === 'th' ? '📡 กำลังดึงข้อมูลจาก InfluxDB...' : '📡 Fetching data from InfluxDB...';
+
+                try {{
+                    const response = await fetch('/api/raw-data/import', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ date_range: dateRange }})
+                    }});
+                    const result = await response.json();
+
+                    if (result.success) {{
+                        statusDiv.style.background = 'var(--success-light)';
+                        statusDiv.style.color = 'var(--success)';
+                        const msg = lang === 'th'
+                            ? `✅ นำเข้าสำเร็จ ${{result.records_imported}} รายการ (ข้ามซ้ำ ${{result.records_skipped}} รายการ)`
+                            : `✅ Imported ${{result.records_imported}} records (skipped ${{result.records_skipped}} duplicates)`;
+                        statusDiv.innerHTML = msg;
+
+                        // Reload after 1.5 seconds
+                        setTimeout(() => {{
+                            location.reload();
+                        }}, 1500);
+                    }} else {{
+                        statusDiv.style.background = 'var(--danger-light)';
+                        statusDiv.style.color = 'var(--danger)';
+                        statusDiv.innerHTML = '❌ Error: ' + result.message;
+                        importBtn.disabled = false;
+                        importBtn.innerHTML = lang === 'th' ? 'นำเข้า' : 'Import';
+                    }}
+                }} catch (error) {{
+                    statusDiv.style.background = 'var(--danger-light)';
+                    statusDiv.style.color = 'var(--danger)';
+                    statusDiv.innerHTML = '❌ Error: ' + error.message;
+                    importBtn.disabled = false;
+                    importBtn.innerHTML = lang === 'th' ? 'นำเข้า' : 'Import';
+                }}
+            }}
+
+            // Close modal when clicking outside
+            document.getElementById('importModal').addEventListener('click', function(e) {{
+                if (e.target === this) closeImportModal();
+            }});
+
             document.addEventListener('DOMContentLoaded', function() {{
                 const savedLang = localStorage.getItem('aquasense_lang') || 'en';
                 setLanguage(savedLang);
@@ -4062,6 +4203,84 @@ async def raw_sensor_data_page():
     </html>
     """
     return HTMLResponse(content=html_content)
+
+# =========================
+# Raw Data Management Endpoints
+# =========================
+@app.post("/api/raw-data/clear")
+async def clear_raw_data():
+    """Clear all local 15-minute records"""
+    global local_15min_records
+    count = len(local_15min_records)
+    local_15min_records.clear()
+    logger.info(f"Cleared {count} local 15-min records")
+    return {"success": True, "message": f"Cleared {count} records", "records_cleared": count}
+
+@app.post("/api/raw-data/import")
+async def import_from_influxdb(request: dict):
+    """
+    Import data from InfluxDB for specified date range
+
+    Request body:
+    {
+        "date_range": "today" | "yesterday" | "both"
+    }
+    """
+    global local_15min_records
+
+    if not INFLUXDB_AVAILABLE:
+        return {"success": False, "message": "InfluxDB not available"}
+
+    date_range = request.get("date_range", "today")
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    dates_to_fetch = []
+    if date_range == "today":
+        dates_to_fetch = [today.isoformat()]
+    elif date_range == "yesterday":
+        dates_to_fetch = [yesterday.isoformat()]
+    elif date_range == "both":
+        dates_to_fetch = [yesterday.isoformat(), today.isoformat()]
+    else:
+        return {"success": False, "message": f"Invalid date_range: {date_range}"}
+
+    total_imported = 0
+    total_skipped = 0
+
+    for date_str in dates_to_fetch:
+        logger.info(f"Fetching cycles for {date_str} from InfluxDB...")
+        records = influx_recovery.query_cycles_for_date(date_str)
+
+        for rec in records:
+            # Check for duplicates by cycle number and date
+            is_dup = False
+            for existing in local_15min_records:
+                if existing.get("cycle") == rec.get("cycle") and existing.get("cycle_date") == rec.get("cycle_date"):
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                local_15min_records.append(rec)
+                total_imported += 1
+            else:
+                total_skipped += 1
+
+    # Sort records by cycle_date and cycle number
+    sorted_records = sorted(list(local_15min_records), key=lambda r: (r.get("cycle_date", "") or "", r.get("cycle", 0) or 0))
+    local_15min_records.clear()
+    for rec in sorted_records:
+        local_15min_records.append(rec)
+
+    logger.info(f"Imported {total_imported} records, skipped {total_skipped} duplicates")
+    return {
+        "success": True,
+        "message": f"Imported {total_imported} records from InfluxDB",
+        "records_imported": total_imported,
+        "records_skipped": total_skipped,
+        "total_records": len(local_15min_records),
+        "dates_fetched": dates_to_fetch
+    }
 
 # =========================
 # Debug Endpoints
