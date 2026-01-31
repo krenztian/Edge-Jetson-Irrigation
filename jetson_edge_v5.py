@@ -75,8 +75,9 @@ irrigation_config = {}
 irrigation_history = deque(maxlen=20)
 
 # Local storage for 15-minute records (for daily aggregation)
-# Stores up to 100 records (25+ hours of data)
-local_15min_records = deque(maxlen=100)
+# Stores up to 192 records (2 full days of cycles: 96 cycles/day × 2)
+# Old records are automatically removed when new ones arrive (FIFO)
+local_15min_records = deque(maxlen=192)
 
 # Track last processed timestamp for recovery
 last_processed_timestamp = None
@@ -3570,55 +3571,68 @@ async def force_reload_all():
 # =========================
 @app.get("/raw-data", response_class=HTMLResponse)
 async def raw_sensor_data_page():
-    """Display stored 15-minute aggregate records - sorted by timestamp (latest first)"""
+    """Display stored 15-minute aggregate records - sorted by cycle (latest first)"""
 
-    # Get local 15-min records and sort by timestamp (latest first)
+    # Get local 15-min records and sort by cycle_date and cycle number (latest first)
     records = list(local_15min_records)
 
-    # Sort by timestamp descending (latest first, earliest last)
-    def get_timestamp(record):
-        ts = record.get("timestamp") or record.get("received_at") or ""
-        return ts
+    # Sort by cycle_date and cycle number descending (latest first)
+    def sort_key(record):
+        cycle_date = record.get("cycle_date") or ""
+        cycle_num = record.get("cycle") or 0
+        return (cycle_date, cycle_num)
 
-    records.sort(key=get_timestamp, reverse=True)  # Latest first (top), earliest last (bottom)
+    records.sort(key=sort_key, reverse=True)  # Latest first (top), earliest last (bottom)
 
-    # Build table rows
+    # Build table rows - show all records for today and yesterday
     table_rows = ""
-    for i, record in enumerate(records[:50]):  # Show last 50 records
+    for i, record in enumerate(records[:96]):  # Show up to 96 records (one full day)
+        # Cycle info
+        cycle_num = record.get("cycle", "N/A")
+        cycle_date = record.get("cycle_date", "N/A")
+        total_cycles = record.get("total_cycles", 96)
+
+        # Format timestamp (just time portion)
         timestamp = record.get("timestamp", record.get("received_at", "N/A"))
-        if timestamp and len(timestamp) > 19:
-            timestamp = timestamp[:19]  # Trim to readable format
-
-        # Get settings from record (if available)
-        settings = record.get("settings", {})
-        growth_stage = settings.get("growth_stage", "N/A")
-        growth_day = settings.get("growth_day", "N/A")
-
-        # Shorten growth stage for display
-        if growth_stage and growth_stage != "N/A":
-            # Extract just the main part, e.g., "Fruit growth" from "Fruit growth (76-110 days)"
-            stage_short = growth_stage.split("(")[0].strip() if "(" in growth_stage else growth_stage
+        if timestamp and "T" in timestamp:
+            time_only = timestamp.split("T")[1][:5]  # HH:MM
+        elif timestamp and len(timestamp) > 10:
+            time_only = timestamp[11:16]  # HH:MM
         else:
-            stage_short = "N/A"
+            time_only = "N/A"
+
+        # Recovered indicator
+        is_recovered = record.get("recovered", False)
+        recovered_badge = '<span style="color: #F59E0B; font-size: 0.7rem;" title="Recovered from InfluxDB">⟳</span>' if is_recovered else ''
+
+        # Format values with 2 decimal places
+        def fmt(val):
+            if val is None or val == "N/A":
+                return "N/A"
+            try:
+                return f"{float(val):.2f}"
+            except:
+                return str(val)
 
         table_rows += f"""
-        <tr>
-            <td>{i+1}</td>
-            <td>{timestamp}</td>
-            <td>{record.get('temp_min_15', 'N/A')}</td>
-            <td>{record.get('temp_max_15', 'N/A')}</td>
-            <td>{record.get('rh_avg_15', 'N/A')}</td>
-            <td>{record.get('wind_avg_15', 'N/A')}</td>
-            <td>{record.get('pressure_avg_15', 'N/A')}</td>
-            <td>{record.get('sunshine_hours_15', 'N/A')}</td>
-            <td>{record.get('rain_mm_15', 'N/A')}</td>
-            <td>{record.get('vpd_avg_15', 'N/A')}</td>
-            <td title="{growth_stage}">Day {growth_day}<br><small>{stage_short}</small></td>
+        <tr{'style="background: #FEF3C7;"' if is_recovered else ''}>
+            <td><strong>{cycle_num}</strong>/{total_cycles} {recovered_badge}</td>
+            <td>{cycle_date}</td>
+            <td>{time_only}</td>
+            <td>{fmt(record.get('temp_min_15'))}</td>
+            <td>{fmt(record.get('temp_max_15'))}</td>
+            <td>{fmt(record.get('rh_avg_15'))}</td>
+            <td>{fmt(record.get('wind_avg_15'))}</td>
+            <td>{fmt(record.get('solar_avg_15'))}</td>
+            <td>{fmt(record.get('sunshine_hours_15'))}</td>
+            <td>{fmt(record.get('rain_mm_15'))}</td>
+            <td>{fmt(record.get('pressure_avg_15'))}</td>
+            <td>{fmt(record.get('vpd_avg_15'))}</td>
         </tr>
         """
 
     if not table_rows:
-        table_rows = "<tr><td colspan='11' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
+        table_rows = "<tr><td colspan='12' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
 
     # Get storage stats
     today = date.today()
@@ -3986,32 +4000,35 @@ async def raw_sensor_data_page():
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--gray-100);">💾</div>
-                        <div class="stat-value">100</div>
-                        <div class="stat-label" data-en="Max Capacity" data-th="ความจุสูงสุด">Max Capacity</div>
+                        <div class="stat-value">192</div>
+                        <div class="stat-label" data-en="Max Capacity (2 days)" data-th="ความจุสูงสุด (2 วัน)">Max Capacity (2 days)</div>
                     </div>
                 </div>
 
                 <!-- Data Table Section -->
                 <div class="section-header">
                     <div class="section-icon">📊</div>
-                    <span class="section-title" data-en="15-Minute Aggregates from ESP32" data-th="ข้อมูลรวม 15 นาทีจาก ESP32">15-Minute Aggregates from ESP32</span>
-                    <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Most recent first" data-th="ล่าสุดก่อน">Most recent first</span>
+                    <span class="section-title" data-en="15-Minute Cycle Data" data-th="ข้อมูลรอบ 15 นาที">15-Minute Cycle Data</span>
+                    <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">
+                        <span style="color: #F59E0B;">⟳</span> = <span data-en="Recovered from InfluxDB" data-th="กู้คืนจาก InfluxDB">Recovered from InfluxDB</span>
+                    </span>
                 </div>
                 <div class="data-table-wrapper">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>#</th>
-                                <th data-en="Timestamp" data-th="เวลา">Timestamp</th>
-                                <th data-en="T_min (°C)" data-th="อุณหภูมิต่ำ (°C)">T_min (°C)</th>
-                                <th data-en="T_max (°C)" data-th="อุณหภูมิสูง (°C)">T_max (°C)</th>
-                                <th data-en="RH (%)" data-th="ความชื้น (%)">RH (%)</th>
-                                <th data-en="Wind (m/s)" data-th="ลม (m/s)">Wind (m/s)</th>
-                                <th data-en="Pressure (hPa)" data-th="ความกดอากาศ (hPa)">Pressure (hPa)</th>
-                                <th data-en="Sunshine (min)" data-th="แสงแดด (นาที)">Sunshine (min)</th>
-                                <th data-en="Rain (mm)" data-th="ฝน (มม.)">Rain (mm)</th>
-                                <th>VPD (kPa)</th>
-                                <th data-en="Growth Stage" data-th="ระยะการเจริญเติบโต">Growth Stage</th>
+                                <th data-en="Cycle" data-th="รอบ">Cycle</th>
+                                <th data-en="Date" data-th="วันที่">Date</th>
+                                <th data-en="Time" data-th="เวลา">Time</th>
+                                <th data-en="T_min" data-th="อุณหภูมิต่ำ">T_min</th>
+                                <th data-en="T_max" data-th="อุณหภูมิสูง">T_max</th>
+                                <th data-en="RH%" data-th="ความชื้น%">RH%</th>
+                                <th data-en="Wind" data-th="ลม">Wind</th>
+                                <th data-en="Solar" data-th="รังสี">Solar</th>
+                                <th data-en="Sun hrs" data-th="แสงแดด">Sun hrs</th>
+                                <th data-en="Rain" data-th="ฝน">Rain</th>
+                                <th data-en="Press" data-th="ความกดอากาศ">Press</th>
+                                <th>VPD</th>
                             </tr>
                         </thead>
                         <tbody>
