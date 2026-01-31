@@ -88,6 +88,8 @@ recovery_status = {
 }
 
 # Sensor status tracking
+# All sensors show green (online) when they report ANY value including 0
+# This helps user identify if a sensor is working vs not reporting at all
 sensor_status = {
     "temperature": {"online": False, "last_update": None, "value": None},
     "humidity": {"online": False, "last_update": None, "value": None},
@@ -95,7 +97,8 @@ sensor_status = {
     "wind": {"online": False, "last_update": None, "value": None},
     "solar": {"online": False, "last_update": None, "value": None},
     "rain": {"online": False, "last_update": None, "value": None},
-    "vpd": {"online": False, "last_update": None, "value": None}
+    "vpd": {"online": False, "last_update": None, "value": None},
+    "sunshine": {"online": False, "last_update": None, "value": None}
 }
 
 # Live sensor readings metadata (for dashboard display)
@@ -499,8 +502,8 @@ def update_sensor_status(sensor_name: str, value, online: bool = True):
                 # VPD: valid range 0-5 kPa
                 is_online = online and 0 <= value <= 5
             elif sensor_name == "sunshine":
-                # Sunshine: 0 minutes is valid (cloudy/night) - range 0-15 min per 15-min period
-                is_online = online and 0 <= value <= 15
+                # Sunshine: 0 hours is valid (cloudy/night) - range 0-0.25 hours per 15-min period
+                is_online = online and 0 <= value <= 0.25
 
         sensor_status[sensor_name] = {
             "online": is_online,
@@ -525,16 +528,20 @@ def load_latest_sensor_data_from_influxdb():
         logger.info("No recent sensor data found in InfluxDB")
         return False
 
-    # Parse the original timestamp
+    # Parse the original timestamp and convert to local time (UTC+7 for Thailand)
     original_ts = latest.get("timestamp", "")
     try:
         # Parse ISO format timestamp
         if "+" in original_ts or original_ts.endswith("Z"):
-            # Has timezone info
+            # Has timezone info - InfluxDB returns UTC
             ts_dt = datetime.fromisoformat(original_ts.replace("Z", "+00:00"))
+            # Convert UTC to local time (UTC+7)
+            local_offset = timedelta(hours=7)
+            ts_local = ts_dt.replace(tzinfo=None) + local_offset
+            formatted_ts = ts_local.strftime("%Y-%m-%d %H:%M")
         else:
             ts_dt = datetime.fromisoformat(original_ts)
-        formatted_ts = ts_dt.strftime("%Y-%m-%d %H:%M")
+            formatted_ts = ts_dt.strftime("%Y-%m-%d %H:%M")
     except:
         formatted_ts = original_ts[:16] if original_ts else "Unknown"
 
@@ -557,6 +564,8 @@ def load_latest_sensor_data_from_influxdb():
         update_sensor_status("rain", latest["rain_mm_15"], True)
     if latest.get("vpd_avg_15") is not None:
         update_sensor_status("vpd", latest["vpd_avg_15"], True)
+    if latest.get("sunshine_hours_15") is not None:
+        update_sensor_status("sunshine", latest["sunshine_hours_15"], True)
 
     # Update metadata for dashboard display
     live_sensor_metadata = {
@@ -747,7 +756,7 @@ class InfluxDBRecovery:
                         "wind_avg_15": record.values.get("wind_avg_15"),
                         "wind_max_15": record.values.get("wind_max_15"),
                         "solar_avg_15": record.values.get("solar_avg_15"),
-                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "sunshine_hours_15": record.values.get("sunshine_hours_15"),
                         "rain_mm_15": record.values.get("rain_mm_15"),
                         "vpd_avg_15": record.values.get("vpd_avg_15"),
                         "device": record.values.get("device", "ESP32")
@@ -798,7 +807,7 @@ class InfluxDBRecovery:
                         "wind_avg_15": record.values.get("wind_avg_15"),
                         "wind_max_15": record.values.get("wind_max_15"),
                         "solar_avg_15": record.values.get("solar_avg_15"),
-                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "sunshine_hours_15": record.values.get("sunshine_hours_15"),
                         "rain_mm_15": record.values.get("rain_mm_15"),
                         "vpd_avg_15": record.values.get("vpd_avg_15"),
                         "device": record.values.get("device", "ESP32")
@@ -860,7 +869,7 @@ class InfluxDBRecovery:
                         "wind_avg_15": record.values.get("wind_avg_15"),
                         "wind_max_15": record.values.get("wind_max_15"),
                         "solar_avg_15": record.values.get("solar_avg_15"),
-                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "sunshine_hours_15": record.values.get("sunshine_hours_15"),
                         "rain_mm_15": record.values.get("rain_mm_15"),
                         "vpd_avg_15": record.values.get("vpd_avg_15"),
                         "device": record.values.get("device", "ESP32")
@@ -917,7 +926,7 @@ class InfluxDBRecovery:
                         "wind_avg_15": record.values.get("wind_avg_15"),
                         "wind_max_15": record.values.get("wind_max_15"),
                         "solar_avg_15": record.values.get("solar_avg_15"),
-                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "sunshine_hours_15": record.values.get("sunshine_hours_15"),
                         "rain_mm_15": record.values.get("rain_mm_15"),
                         "vpd_avg_15": record.values.get("vpd_avg_15"),
                         "device": record.values.get("device", "ESP32")
@@ -964,7 +973,7 @@ class InfluxDBRecovery:
                         "wind_avg_15": record.values.get("wind_avg_15"),
                         "wind_max_15": record.values.get("wind_max_15"),
                         "solar_avg_15": record.values.get("solar_avg_15"),
-                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "sunshine_hours_15": record.values.get("sunshine_hours_15"),
                         "rain_mm_15": record.values.get("rain_mm_15"),
                         "vpd_avg_15": record.values.get("vpd_avg_15"),
                         "device": record.values.get("device", "ESP32")
@@ -1015,7 +1024,7 @@ def store_15min_record_locally(data: dict):
         "wind_avg_15": round2(data.get("wind_speed")),
         "wind_max_15": round2(data.get("wind_speed")),  # Same as avg for now
         "solar_avg_15": round2(data.get("solar_radiation")),
-        "sunshine_min_15": data.get("sunshine_minutes", 0),  # Integer minutes
+        "sunshine_hours_15": data.get("sunshine_hours", 0),  # Hours (already converted by ESP32)
         "rain_mm_15": round2(data.get("rainfall_mm", 0)),
         "vpd_avg_15": round2(data.get("vpd")),
         "device": data.get("device_id", "ESP32")
@@ -1188,7 +1197,7 @@ def calculate_daily_aggregates_from_15min(records: list) -> dict:
     temp_avgs = [r["temp_avg_15"] for r in records if r.get("temp_avg_15") is not None]
     rh_avgs = [r["rh_avg_15"] for r in records if r.get("rh_avg_15") is not None]
     wind_avgs = [r["wind_avg_15"] for r in records if r.get("wind_avg_15") is not None]
-    sunshine_mins = [r["sunshine_min_15"] for r in records if r.get("sunshine_min_15") is not None]
+    sunshine_hours = [r["sunshine_hours_15"] for r in records if r.get("sunshine_hours_15") is not None]
     rain_mms = [r["rain_mm_15"] for r in records if r.get("rain_mm_15") is not None]
     pressure_avgs = [r["pressure_avg_15"] for r in records if r.get("pressure_avg_15") is not None]
 
@@ -1203,7 +1212,7 @@ def calculate_daily_aggregates_from_15min(records: list) -> dict:
         "Tmean_day": sum(temp_avgs) / len(temp_avgs) if temp_avgs else (min(temp_mins) + max(temp_maxs)) / 2,
         "RHmean_day": sum(rh_avgs) / len(rh_avgs) if rh_avgs else 70.0,
         "WindMean_day": sum(wind_avgs) / len(wind_avgs) if wind_avgs else 1.0,
-        "SunshineHours_day": sum(sunshine_mins) / 60.0 if sunshine_mins else 0.0,  # Convert minutes to hours
+        "SunshineHours_day": sum(sunshine_hours) if sunshine_hours else 0.0,  # Already in hours from ESP32
         "Rain_day": sum(rain_mms) if rain_mms else 0.0,
         "PressureMean_day": sum(pressure_avgs) / len(pressure_avgs) if pressure_avgs else 1013.0,
         "records_count": len(records),
@@ -1668,7 +1677,7 @@ async def check_and_recover_missed_data():
                 "wind_avg_15": record.get("wind_avg_15"),
                 "wind_max_15": record.get("wind_max_15"),
                 "solar_avg_15": record.get("solar_avg_15"),
-                "sunshine_min_15": record.get("sunshine_min_15"),
+                "sunshine_hours_15": record.get("sunshine_hours_15"),
                 "rain_mm_15": record.get("rain_mm_15"),
                 "vpd_avg_15": record.get("vpd_avg_15"),
                 "device": record.get("device", "ESP32"),
@@ -2381,7 +2390,7 @@ async def simulate_daily_prediction(data: dict = None):
     {
         "mode": "aggregate",
         "records": [
-            {"temp_min_15": 23, "temp_max_15": 25, "rh_avg_15": 80, "wind_avg_15": 1.0, "sunshine_min_15": 0, "rain_mm_15": 0},
+            {"temp_min_15": 23, "temp_max_15": 25, "rh_avg_15": 80, "wind_avg_15": 1.0, "sunshine_hours_15": 0, "rain_mm_15": 0},
             ...
         ]
     }
@@ -2450,7 +2459,7 @@ async def simulate_daily_prediction(data: dict = None):
 
                 # Sunshine only during day (6 AM - 6 PM)
                 is_daytime = 6 <= hour_of_day <= 18
-                sunshine_min = random.uniform(10, 15) if is_daytime and random.random() > 0.3 else 0
+                sunshine_hours = random.uniform(0.17, 0.25) if is_daytime and random.random() > 0.3 else 0  # 0-0.25 hours per 15-min
 
                 records.append({
                     "temp_min_15": round(temp_min, 1),
@@ -2458,7 +2467,7 @@ async def simulate_daily_prediction(data: dict = None):
                     "temp_avg_15": round((temp_min + temp_max) / 2, 1),
                     "rh_avg_15": round(base_humidity + random.uniform(-10, 10), 1),
                     "wind_avg_15": round(random.uniform(0.5, 3.0), 1),
-                    "sunshine_min_15": round(sunshine_min, 1),
+                    "sunshine_hours_15": round(sunshine_hours, 3),
                     "rain_mm_15": round(random.uniform(0, 0.5) if random.random() > 0.9 else 0, 2),
                     "pressure_avg_15": round(1010 + random.uniform(-5, 5), 1)
                 })
@@ -2905,7 +2914,7 @@ async def receive_15min_data(data: dict):
             "wind_avg_15": data.get("wind_speed"),
             "wind_max_15": data.get("wind_speed"),
             "solar_avg_15": data.get("solar_radiation"),
-            "sunshine_min_15": data.get("sunshine_minutes", 0),  # Direct minutes from ESP32
+            "sunshine_hours_15": data.get("sunshine_hours", 0),  # Hours from ESP32 (already converted)
             "rain_mm_15": data.get("rainfall", data.get("rainfall_mm", 0)),
             "vpd_avg_15": data.get("vpd"),
             "device": data.get("device_id", "ESP32"),
@@ -2974,6 +2983,11 @@ async def receive_15min_data(data: dict):
         if record["vpd_avg_15"] is not None:
             update_sensor_status("vpd", record["vpd_avg_15"], vpd_online)
 
+        # Sunshine - derived from solar sensor, 0 hours is valid (no bright sun)
+        sunshine_value = record.get("sunshine_hours_15")
+        if sunshine_value is not None:
+            update_sensor_status("sunshine", sunshine_value, solar_online)
+
         # Mark data as "live" from ESP32 (not recovered from InfluxDB)
         update_live_sensor_metadata_from_esp32()
 
@@ -3004,7 +3018,7 @@ async def receive_15min_data(data: dict):
                 "temp_range": f"{record['temp_min_15']}-{record['temp_max_15']}°C",
                 "humidity": record["rh_avg_15"],
                 "rain_mm": record["rain_mm_15"],
-                "sunshine_min": record["sunshine_min_15"]
+                "sunshine_hours": record["sunshine_hours_15"]
             },
             "local_storage": {
                 "total_records": len(local_15min_records),
@@ -3393,7 +3407,7 @@ async def raw_sensor_data_page():
             <td>{record.get('rh_avg_15', 'N/A')}</td>
             <td>{record.get('wind_avg_15', 'N/A')}</td>
             <td>{record.get('pressure_avg_15', 'N/A')}</td>
-            <td>{record.get('sunshine_min_15', 'N/A')}</td>
+            <td>{record.get('sunshine_hours_15', 'N/A')}</td>
             <td>{record.get('rain_mm_15', 'N/A')}</td>
             <td>{record.get('vpd_avg_15', 'N/A')}</td>
             <td title="{growth_stage}">Day {growth_day}<br><small>{stage_short}</small></td>
@@ -3955,7 +3969,7 @@ async def dashboard():
 
     # Prepare data for charts - use local_15min_records (from /receive-15min)
     history_data = {
-        'labels': [], 'humidity': [], 'wind_speed': [], 'sunshine_min': [],
+        'labels': [], 'humidity': [], 'wind_speed': [], 'sunshine_hours': [],
         'solar_wm2': [], 'temp_min': [], 'temp_max': [], 'pressure': [],
         'rainfall': [], 'vpd': []
     }
@@ -3978,7 +3992,7 @@ async def dashboard():
             history_data['labels'].append(formatted_time)
             history_data['humidity'].append(round(record.get('rh_avg_15', 0) or 0, 2))
             history_data['wind_speed'].append(round(record.get('wind_avg_15', 0) or 0, 2))
-            history_data['sunshine_min'].append(record.get('sunshine_min_15', 0) or 0)
+            history_data['sunshine_hours'].append(round(record.get('sunshine_hours_15', 0) or 0, 3))
             history_data['solar_wm2'].append(round(record.get('solar_avg_15', 0) or 0, 2))
             history_data['temp_min'].append(round(record.get('temp_min_15', 0) or 0, 2))
             history_data['temp_max'].append(round(record.get('temp_max_15', 0) or 0, 2))
@@ -4027,11 +4041,11 @@ async def dashboard():
     if current_wind == 0:
         current_wind = sensor_status.get("wind", {}).get("value") or 0
 
-    # Sunshine minutes from latest 15-min record
-    current_sunshine_min = 0
+    # Sunshine hours from latest 15-min record
+    current_sunshine_hours = 0
     if local_15min_records:
         latest_15min = list(local_15min_records)[-1]
-        current_sunshine_min = latest_15min.get("sunshine_min_15", 0) or 0
+        current_sunshine_hours = latest_15min.get("sunshine_hours_15", 0) or 0
 
     current_pressure = latest_data.get("input_data", {}).get("pressure", 0) or 0
     if current_pressure == 0:
@@ -4130,8 +4144,8 @@ async def dashboard():
     solar_status_class = 'online' if sensor_status.get('solar', {}).get('online') else 'offline'
     rain_status_class = 'online' if sensor_status.get('rain', {}).get('online') else 'offline'
     pressure_status_class = 'online' if sensor_status.get('pressure', {}).get('online') else 'offline'
-    # Sunshine status: online if solar is online (same sensor measures both)
-    sunshine_status_class = solar_status_class
+    # Sunshine has its own status now (derived from solar, but tracked separately)
+    sunshine_status_class = 'online' if sensor_status.get('sunshine', {}).get('online') else 'offline'
 
     # Countdown section
     countdown_section = ""
@@ -5031,9 +5045,9 @@ async def dashboard():
                                 <div class="sensor-status {sunshine_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Sunshine" data-th="แสงแดด">Sunshine</div>
-                            <div class="sensor-value">{current_sunshine_min:.0f}<span class="sensor-unit">min</span></div>
-                            <div style="font-size: 0.7rem; color: var(--gray-500);" data-en="Last 15-min period" data-th="ช่วง 15 นาทีล่าสุด">Last 15-min period</div>
-                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_sunshine_min/15*100, 100)}%; background: #ffb300;"></div></div>
+                            <div class="sensor-value">{current_sunshine_hours:.3f}<span class="sensor-unit">hrs</span></div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);" data-en="Last 15-min period (max 0.25h)" data-th="ช่วง 15 นาทีล่าสุด (สูงสุด 0.25 ชม.)">Last 15-min period (max 0.25h)</div>
+                            <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_sunshine_hours/0.25*100, 100)}%; background: #ffb300;"></div></div>
                         </div>
                     </div>
                 </div>
