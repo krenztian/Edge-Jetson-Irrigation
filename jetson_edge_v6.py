@@ -1156,10 +1156,16 @@ class InfluxDBRecovery:
                     utc_time = record.get_time()
                     bangkok_time = utc_to_bangkok(utc_time.replace(tzinfo=None))
 
+                    # Get growth_day from InfluxDB if available, or use current
+                    influx_growth_day = record.values.get("growth_day")
+                    influx_growth_stage = record.values.get("growth_stage")
+
                     records.append({
                         "cycle": record.values.get("cycle_number"),
                         "cycle_date": cycle_date,
                         "timestamp": bangkok_time.isoformat(),  # Now in Bangkok time
+                        "growth_day": influx_growth_day if influx_growth_day else growth_stage_config.get("current_day", 1),
+                        "growth_stage": influx_growth_stage if influx_growth_stage else get_growth_stage_from_day(growth_stage_config.get("current_day", 1)),
                         "temp_min_15": record.values.get("temp_min_15"),
                         "temp_max_15": record.values.get("temp_max_15"),
                         "temp_avg_15": record.values.get("temp_avg_15"),
@@ -3164,6 +3170,10 @@ async def receive_15min_data(data: dict):
         cycle_date = data.get("cycle_date")
         total_cycles = data.get("total_cycles", 96)
 
+        # Get current growth day and stage for tracking
+        current_growth_day = growth_stage_config.get("current_day", 1)
+        current_growth_stage = get_growth_stage_from_day(current_growth_day)
+
         # Extract data from ESP32 payload
         record = {
             "cycle": cycle_num,                    # Cycle number 1-96
@@ -3171,6 +3181,8 @@ async def receive_15min_data(data: dict):
             "cycle_date": cycle_date,              # YYYY-MM-DD
             "timestamp": data.get("timestamp", datetime.now().isoformat()),
             "received_at": datetime.now().isoformat(),
+            "growth_day": current_growth_day,      # Farm growth day (1-365)
+            "growth_stage": current_growth_stage,  # Growth stage name
             "temp_min_15": data.get("tmin"),
             "temp_max_15": data.get("tmax"),
             "temp_avg_15": (data.get("tmin", 0) + data.get("tmax", 0)) / 2 if data.get("tmin") and data.get("tmax") else None,
@@ -3674,11 +3686,18 @@ async def raw_sensor_data_page():
             except:
                 return str(val)
 
+        # Growth day and stage info
+        growth_day = record.get('growth_day', 'N/A')
+        growth_stage = record.get('growth_stage', '')
+        # Shorten stage name for display (e.g., "Initial (0-60 days)" -> "Initial")
+        stage_short = growth_stage.split('(')[0].strip() if growth_stage and '(' in growth_stage else (growth_stage[:10] if growth_stage else 'N/A')
+
         table_rows += f"""
         <tr{'style="background: #FEF3C7;"' if is_recovered else ''}>
             <td><strong>{cycle_num}</strong>/{total_cycles} {recovered_badge}</td>
             <td>{cycle_date}</td>
             <td>{time_only}</td>
+            <td style="text-align: center;"><strong>{growth_day}</strong><br><span style="font-size: 0.7rem; color: var(--gray-500);">{stage_short}</span></td>
             <td>{fmt(record.get('temp_min_15'))}</td>
             <td>{fmt(record.get('temp_max_15'))}</td>
             <td>{fmt(record.get('rh_avg_15'))}</td>
@@ -3692,7 +3711,7 @@ async def raw_sensor_data_page():
         """
 
     if not table_rows:
-        table_rows = "<tr><td colspan='12' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
+        table_rows = "<tr><td colspan='13' style='text-align:center; padding:20px;'>No data received yet. Waiting for ESP32...</td></tr>"
 
     # Get storage stats
     today = date.today()
@@ -4124,6 +4143,7 @@ async def raw_sensor_data_page():
                                 <th data-en="Cycle" data-th="รอบ">Cycle</th>
                                 <th data-en="Date" data-th="วันที่">Date</th>
                                 <th data-en="Time" data-th="เวลา">Time</th>
+                                <th data-en="Growth Day" data-th="วันเพาะปลูก">Growth Day</th>
                                 <th data-en="T_min" data-th="อุณหภูมิต่ำ">T_min</th>
                                 <th data-en="T_max" data-th="อุณหภูมิสูง">T_max</th>
                                 <th data-en="RH%" data-th="ความชื้น%">RH%</th>
