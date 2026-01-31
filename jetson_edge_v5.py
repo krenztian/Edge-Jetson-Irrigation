@@ -4853,6 +4853,15 @@ async def dashboard():
             .farm-stat-value {{ font-size: 1rem; font-weight: 700; }}
             .farm-stat-label {{ font-size: 0.65rem; opacity: 0.85; }}
 
+            /* Sidebar AI Climate Analysis */
+            .sidebar-climate {{
+                margin: 16px 12px;
+                padding: 12px;
+                background: var(--white);
+                border: 1px solid var(--gray-200);
+                border-radius: var(--radius);
+            }}
+
             /* Main Content */
             .main-content {{
                 flex: 1;
@@ -5344,6 +5353,31 @@ async def dashboard():
                         </div>
                     </div>
                 </div>
+
+                <!-- AI Climate Analysis (ETo, ETc, Rn) in Sidebar -->
+                <div class="sidebar-climate">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: var(--gray-600); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        <span>🤖</span>
+                        <span data-en="AI Climate Analysis" data-th="วิเคราะห์สภาพอากาศ AI">AI Climate Analysis</span>
+                    </div>
+                    <div style="font-size: 0.65rem; color: var(--gray-500); margin-bottom: 8px;">
+                        {prediction_date} • {data_completeness:.0f}% <span data-en="data" data-th="ข้อมูล">data</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--primary-light); border-radius: 8px;">
+                            <span style="font-size: 0.75rem; color: var(--gray-600);">ETo</span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: var(--primary);">{current_eto:.2f} <small>mm/day</small></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--success-light); border-radius: 8px;">
+                            <span style="font-size: 0.75rem; color: var(--gray-600);">ETc</span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: var(--success);">{current_etc:.2f} <small>mm/day</small></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--warning-light); border-radius: 8px;">
+                            <span style="font-size: 0.75rem; color: var(--gray-600);">Rn</span>
+                            <span style="font-size: 0.9rem; font-weight: 600; color: var(--warning);">{current_rn_est:.2f} <small>MJ/m²</small></span>
+                        </div>
+                    </div>
+                </div>
             </aside>
 
             <!-- Main Content -->
@@ -5525,43 +5559,28 @@ async def dashboard():
                     </div>
                 </div>
 
-                <!-- Daily ET Values Section -->
-                <div class="daily-section">
+                <!-- Irrigation History Section (Moved here - below Live Sensor Readings) -->
+                <div class="irrigation-section">
                     <div class="section-header">
-                        <div class="section-icon green">🌿</div>
-                        <span class="section-title" data-en="Daily Evapotranspiration" data-th="การคายระเหยรายวัน">Daily Evapotranspiration</span>
+                        <div class="section-icon orange">💦</div>
+                        <span class="section-title" data-en="Irrigation History" data-th="ประวัติการให้น้ำ">Irrigation History</span>
                         <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);">
-                            {prediction_date} •
-                            <span style="color: {'var(--success)' if data_quality == 'good' else 'var(--warning)' if data_quality in ['acceptable', 'low'] else 'var(--danger)' if data_quality == 'very_low' else 'var(--gray-400)'};">
-                                {data_completeness:.0f}% <span data-en="data" data-th="ข้อมูล">data</span>
-                            </span>
+                            {datetime.now().strftime("%Y-%m-%d")} •
+                            {f'<span style="color: var(--success);">✓ {len([h for h in irrigation_history if h.get("irrigation_volume", 0) > 0])} irrigations</span>' if any(h.get("irrigation_volume", 0) > 0 for h in irrigation_history) else '<span style="color: var(--gray-400);">No irrigation today</span>'}
                         </span>
                     </div>
-                    {f'''<div class="info-alert {'yellow' if data_quality in ['acceptable', 'low'] else 'red'}" style="margin-bottom: 12px; font-size: 0.75rem;">
-                        <span>⚠️</span>
-                        <span>{data_quality_warning}</span>
-                    </div>''' if data_quality_warning else ''}
-                    <div class="daily-grid">
-                        <div class="daily-card">
-                            <div class="daily-icon" style="background: var(--primary-light);">💨</div>
-                            <div class="daily-value" style="color: var(--primary);">{current_eto:.2f}</div>
-                            <div class="daily-label">ETo (mm/<span data-en="day" data-th="วัน">day</span>)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Reference ET" data-th="ค่าอ้างอิง ET">Reference ET</div>
-                        </div>
-                        <div class="daily-card">
-                            <div class="daily-icon" style="background: var(--success-light);">🌱</div>
-                            <div class="daily-value" style="color: var(--success);">{current_etc:.2f}</div>
-                            <div class="daily-label">ETc (mm/<span data-en="day" data-th="วัน">day</span>)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Crop ET (Kc × ETo)" data-th="การคายระเหยพืช (Kc × ETo)">Crop ET (Kc × ETo)</div>
-                        </div>
-                        <div class="daily-card">
-                            <div class="daily-icon" style="background: var(--warning-light);">☀️</div>
-                            <div class="daily-value" style="color: var(--warning);">{current_rn_est:.2f}</div>
-                            <div class="daily-label">Rn_est (MJ/m²/<span data-en="day" data-th="วัน">day</span>)</div>
-                            <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Net Radiation" data-th="รังสีสุทธิ">Net Radiation</div>
-                        </div>
+                    <div class="irrigation-chart-card">
+                        <div class="chart-container" style="height: 200px;"><canvas id="irrigationHistoryChart"></canvas></div>
                     </div>
+                </div>
 
+                <!-- Daily ET History Section -->
+                <div class="daily-section">
+                    <div class="section-header">
+                        <div class="section-icon green">🤖</div>
+                        <span class="section-title" data-en="AI Climate History" data-th="ประวัติสภาพอากาศ AI">AI Climate History</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="ETo, ETc, Rn - Last 10 Days" data-th="ETo, ETc, Rn - 10 วันล่าสุด">ETo, ETc, Rn - Last 10 Days</span>
+                    </div>
                     <!-- Daily ET History Chart (Last 10 Days) -->
                     <div class="chart-card" style="margin-top: 16px;">
                         <div class="chart-header">
@@ -5637,17 +5656,6 @@ async def dashboard():
                     </div>
                 </div>
 
-                <!-- Irrigation History Section -->
-                <div class="irrigation-section">
-                    <div class="section-header">
-                        <div class="section-icon orange">💦</div>
-                        <span class="section-title" data-en="Irrigation History" data-th="ประวัติการให้น้ำ">Irrigation History</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Last 10 events" data-th="10 เหตุการณ์ล่าสุด">Last 10 events</span>
-                    </div>
-                    <div class="irrigation-chart-card">
-                        <div class="chart-container" style="height: 200px;"><canvas id="irrigationHistoryChart"></canvas></div>
-                    </div>
-                </div>
             </main>
         </div>
 
