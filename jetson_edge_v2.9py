@@ -4150,15 +4150,30 @@ async def dashboard():
         color = "#4caf50" if s["online"] else "#999"
         return f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{color};margin-right:5px;"></span>'
 
-    # Pre-compute sensor status classes for HTML (avoids f-string issues with empty dict)
-    temp_status_class = 'online' if sensor_status.get('temperature', {}).get('online') else 'offline'
-    humidity_status_class = 'online' if sensor_status.get('humidity', {}).get('online') else 'offline'
-    wind_status_class = 'online' if sensor_status.get('wind', {}).get('online') else 'offline'
-    solar_status_class = 'online' if sensor_status.get('solar', {}).get('online') else 'offline'
-    rain_status_class = 'online' if sensor_status.get('rain', {}).get('online') else 'offline'
-    pressure_status_class = 'online' if sensor_status.get('pressure', {}).get('online') else 'offline'
-    # Sunshine has its own status now (derived from solar, but tracked separately)
-    sunshine_status_class = 'online' if sensor_status.get('sunshine', {}).get('online') else 'offline'
+    # Pre-compute sensor status classes for HTML
+    # online = live data from ESP32, standby = restored data from InfluxDB, offline = no data/error
+    def get_sensor_status_class(sensor_name):
+        sensor_online = sensor_status.get(sensor_name, {}).get('online')
+        if sensor_online:
+            if live_data_source == "restored":
+                return 'standby'
+            return 'online'
+        return 'offline'
+
+    temp_status_class = get_sensor_status_class('temperature')
+    humidity_status_class = get_sensor_status_class('humidity')
+    wind_status_class = get_sensor_status_class('wind')
+    solar_status_class = get_sensor_status_class('solar')
+    rain_status_class = get_sensor_status_class('rain')
+    pressure_status_class = get_sensor_status_class('pressure')
+    sunshine_status_class = get_sensor_status_class('sunshine')
+
+    # Status text labels (English / Thai)
+    status_text = {
+        'online': {'en': 'Online', 'th': 'ออนไลน์'},
+        'standby': {'en': 'Standby', 'th': 'สแตนด์บาย'},
+        'offline': {'en': 'Offline', 'th': 'ออฟไลน์'}
+    }
 
     # Countdown section
     countdown_section = ""
@@ -4740,12 +4755,23 @@ async def dashboard():
                 font-size: 1rem;
             }}
             .sensor-status {{
-                width: 8px;
-                height: 8px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 0.65rem;
+                font-weight: 500;
+            }}
+            .sensor-status-dot {{
+                width: 10px;
+                height: 10px;
                 border-radius: 50%;
             }}
-            .sensor-status.online {{ background: var(--success); }}
-            .sensor-status.offline {{ background: var(--gray-400); }}
+            .sensor-status.online .sensor-status-dot {{ background: var(--success); }}
+            .sensor-status.online {{ color: var(--success); }}
+            .sensor-status.standby .sensor-status-dot {{ background: var(--warning); }}
+            .sensor-status.standby {{ color: var(--warning); }}
+            .sensor-status.offline .sensor-status-dot {{ background: var(--gray-400); }}
+            .sensor-status.offline {{ color: var(--gray-400); }}
             .sensor-name {{ font-size: 0.75rem; color: var(--gray-500); margin-bottom: 4px; }}
             .sensor-value {{ font-size: 1.5rem; font-weight: 700; color: var(--gray-800); }}
             .sensor-unit {{ font-size: 0.8rem; color: var(--gray-500); font-weight: 400; }}
@@ -4991,8 +5017,8 @@ async def dashboard():
                         <span class="section-title">
                             <span data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
                             <span style="font-size: 0.7rem; font-weight: normal; margin-left: 8px;">
-                                {f'<span style="color: #10B981;">● Live</span>' if live_data_source == "live" else f'<span style="color: #F59E0B;">● Restored</span>' if live_data_source == "restored" else '<span style="color: #9CA3AF;">● Waiting</span>'}
-                                <span style="color: var(--gray-500); margin-left: 4px;">Collected: {live_data_timestamp}</span>
+                                {f'<span style="color: #10B981;">● <span data-en="Live" data-th="สด">Live</span></span>' if live_data_source == "live" else f'<span style="color: #F59E0B;">● <span data-en="Restored" data-th="กู้คืน">Restored</span></span>' if live_data_source == "restored" else '<span style="color: #9CA3AF;">● <span data-en="Waiting" data-th="รอข้อมูล">Waiting</span></span>'}
+                                <span style="color: var(--gray-500); margin-left: 4px;"><span data-en="Collected" data-th="เก็บข้อมูลเมื่อ">Collected</span>: {live_data_timestamp}</span>
                             </span>
                         </span>
                     </div>
@@ -5000,7 +5026,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: var(--primary-light);">🌡️</div>
-                                <div class="sensor-status {temp_status_class}"></div>
+                                <div class="sensor-status {temp_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[temp_status_class]['en']}" data-th="{status_text[temp_status_class]['th']}">{status_text[temp_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Temperature" data-th="อุณหภูมิ">Temperature</div>
                             <div class="sensor-value">{current_temp_max:.2f}<span class="sensor-unit">°C</span></div>
@@ -5010,7 +5036,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E3F2FD;">💧</div>
-                                <div class="sensor-status {humidity_status_class}"></div>
+                                <div class="sensor-status {humidity_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[humidity_status_class]['en']}" data-th="{status_text[humidity_status_class]['th']}">{status_text[humidity_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Humidity" data-th="ความชื้น">Humidity</div>
                             <div class="sensor-value">{current_humidity:.2f}<span class="sensor-unit">%</span></div>
@@ -5019,7 +5045,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E8F5E9;">🌬️</div>
-                                <div class="sensor-status {wind_status_class}"></div>
+                                <div class="sensor-status {wind_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[wind_status_class]['en']}" data-th="{status_text[wind_status_class]['th']}">{status_text[wind_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Wind Speed" data-th="ความเร็วลม">Wind Speed</div>
                             <div class="sensor-value">{current_wind:.2f}<span class="sensor-unit">m/s</span></div>
@@ -5028,7 +5054,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #FFF8E1;">☀️</div>
-                                <div class="sensor-status {solar_status_class}"></div>
+                                <div class="sensor-status {solar_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[solar_status_class]['en']}" data-th="{status_text[solar_status_class]['th']}">{status_text[solar_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Solar Radiation" data-th="รังสีดวงอาทิตย์">Solar Radiation</div>
                             <div class="sensor-value">{current_solar_wm2:.2f}<span class="sensor-unit">W/m²</span></div>
@@ -5037,7 +5063,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #E1F5FE;">🌧️</div>
-                                <div class="sensor-status {rain_status_class}"></div>
+                                <div class="sensor-status {rain_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[rain_status_class]['en']}" data-th="{status_text[rain_status_class]['th']}">{status_text[rain_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Rainfall" data-th="ปริมาณฝน">Rainfall</div>
                             <div class="sensor-value">{current_rainfall:.2f}<span class="sensor-unit">mm</span></div>
@@ -5046,7 +5072,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #F3E5F5;">📊</div>
-                                <div class="sensor-status {pressure_status_class}"></div>
+                                <div class="sensor-status {pressure_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[pressure_status_class]['en']}" data-th="{status_text[pressure_status_class]['th']}">{status_text[pressure_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Pressure" data-th="ความกดอากาศ">Pressure</div>
                             <div class="sensor-value">{current_pressure:.2f}<span class="sensor-unit">hPa</span></div>
@@ -5055,7 +5081,7 @@ async def dashboard():
                         <div class="sensor-card">
                             <div class="sensor-header">
                                 <div class="sensor-icon" style="background: #FFFDE7;">⏱️</div>
-                                <div class="sensor-status {sunshine_status_class}"></div>
+                                <div class="sensor-status {sunshine_status_class}"><div class="sensor-status-dot"></div><span data-en="{status_text[sunshine_status_class]['en']}" data-th="{status_text[sunshine_status_class]['th']}">{status_text[sunshine_status_class]['en']}</span></div>
                             </div>
                             <div class="sensor-name" data-en="Sunshine" data-th="แสงแดด">Sunshine</div>
                             <div class="sensor-value">{current_sunshine_hours:.4f}<span class="sensor-unit">hrs</span></div>
