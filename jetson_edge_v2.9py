@@ -3985,6 +3985,9 @@ async def dashboard():
                     dt = datetime.fromisoformat(str(timestamp).replace('Z', '').split('+')[0])
                 else:
                     dt = datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M:%S")
+                # Convert UTC to Thailand time (UTC+7) for display
+                if str(timestamp).endswith('Z') or '+00:00' in str(timestamp):
+                    dt = dt + timedelta(hours=7)
                 formatted_time = dt.strftime('%H:%M')
             except:
                 formatted_time = str(timestamp)[-8:-3] if len(str(timestamp)) > 8 else str(timestamp)
@@ -4023,40 +4026,50 @@ async def dashboard():
     data_quality_warning = daily_prediction_result.get("eto_prediction", {}).get("data_quality_warning") if daily_prediction_result.get("eto_prediction") else None
     prediction_date = daily_prediction_result.get("last_prediction_date", "N/A")
 
-    # Temperature: use cycle_data if available, otherwise use sensor_status
-    current_temp_min = latest_data.get("input_data", {}).get("tmin", 0)
-    current_temp_max = latest_data.get("input_data", {}).get("tmax", 0)
-    if current_temp_min == 0 and current_temp_max == 0:
-        temp_val = sensor_status.get("temperature", {}).get("value")
-        if temp_val:
-            current_temp_min = temp_val
-            current_temp_max = temp_val
-
-    # Other sensors: use cycle_data if available, otherwise use sensor_status
-    current_humidity = latest_data.get("input_data", {}).get("humidity", 0)
-    if current_humidity == 0:
-        current_humidity = sensor_status.get("humidity", {}).get("value") or 0
-
-    current_wind = latest_data.get("input_data", {}).get("wind_speed", 0)
-    if current_wind == 0:
-        current_wind = sensor_status.get("wind", {}).get("value") or 0
-
-    # Sunshine hours from latest 15-min record
+    # Live Sensor Readings - use latest record from local_15min_records (same as Raw Data tab)
+    live_data_source = "waiting"
+    live_data_timestamp = "No data yet"
+    current_temp_min = 0
+    current_temp_max = 0
+    current_humidity = 0
+    current_wind = 0
     current_sunshine_hours = 0
+    current_pressure = 0
+    current_vpd = 0
+    current_solar_wm2 = 0
+    current_rainfall = 0
+
     if local_15min_records:
-        latest_15min = list(local_15min_records)[-1]
-        current_sunshine_hours = latest_15min.get("sunshine_hours_15", 0) or 0
+        latest_record = list(local_15min_records)[-1]
+        current_temp_min = round(latest_record.get("temp_min_15") or 0, 2)
+        current_temp_max = round(latest_record.get("temp_max_15") or 0, 2)
+        current_humidity = round(latest_record.get("rh_avg_15") or 0, 2)
+        current_wind = round(latest_record.get("wind_avg_15") or 0, 2)
+        current_sunshine_hours = round(latest_record.get("sunshine_hours_15") or 0, 4)
+        current_pressure = round(latest_record.get("pressure_avg_15") or 0, 2)
+        current_vpd = round(latest_record.get("vpd_avg_15") or 0, 2)
+        current_solar_wm2 = round(latest_record.get("solar_avg_15") or 0, 2)
+        current_rainfall = round(latest_record.get("rain_mm_15") or 0, 2)
 
-    current_pressure = latest_data.get("input_data", {}).get("pressure", 0) or 0
-    if current_pressure == 0:
-        current_pressure = sensor_status.get("pressure", {}).get("value") or 0
+        # Get timestamp and convert UTC to Thailand time (UTC+7)
+        ts = latest_record.get("timestamp", latest_record.get("received_at", ""))
+        try:
+            if 'T' in str(ts):
+                dt = datetime.fromisoformat(str(ts).replace('Z', '').split('+')[0])
+            else:
+                dt = datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S")
+            # Convert UTC to Thailand time (UTC+7)
+            if str(ts).endswith("Z") or "+00:00" in str(ts):
+                dt = dt + timedelta(hours=7)
+            live_data_timestamp = dt.strftime("%Y-%m-%d %H:%M")
+        except:
+            live_data_timestamp = str(ts)[:16]
 
-    current_vpd = latest_data.get("input_data", {}).get("vpd", 0) or 0
-    if current_vpd == 0:
-        current_vpd = sensor_status.get("vpd", {}).get("value") or 0
-
-    # Solar radiation from sensor (W/m²) - real-time from ESP32
-    current_solar_wm2 = get_current_solar_radiation()
+        # Determine source: live or restored
+        if latest_record.get("recovered"):
+            live_data_source = "restored"
+        else:
+            live_data_source = "live"
 
     # Rn_est - already extracted above from daily_prediction_result or fallback
     current_rn_est = current_rad  # Use the value set earlier
@@ -4975,13 +4988,13 @@ async def dashboard():
                 <div class="sensors-section">
                     <div class="section-header">
                         <div class="section-icon blue">📡</div>
-                        <span class="section-title" data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
-                        <div style="margin-left: auto; text-align: right;">
-                            <span style="font-size: 0.75rem; color: var(--gray-500);">
-                                {f'<span style="color: #10B981;">● Live</span> from ESP32' if live_sensor_metadata.get("data_source") == "live" else f'<span style="color: #F59E0B;">● Restored</span> from InfluxDB' if live_sensor_metadata.get("data_source") == "influxdb" else '<span style="color: #9CA3AF;">● Waiting for data</span>'}
+                        <span class="section-title">
+                            <span data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
+                            <span style="font-size: 0.7rem; font-weight: normal; margin-left: 8px;">
+                                {f'<span style="color: #10B981;">● Live</span>' if live_data_source == "live" else f'<span style="color: #F59E0B;">● Restored</span>' if live_data_source == "restored" else '<span style="color: #9CA3AF;">● Waiting</span>'}
+                                <span style="color: var(--gray-500); margin-left: 4px;">Collected: {live_data_timestamp}</span>
                             </span>
-                            {f'<div style="font-size: 0.65rem; color: var(--gray-400);">Collected: {live_sensor_metadata.get("original_timestamp", "N/A")}</div>' if live_sensor_metadata.get("original_timestamp") else ''}
-                        </div>
+                        </span>
                     </div>
                     <div class="sensor-grid">
                         <div class="sensor-card">
@@ -4990,8 +5003,8 @@ async def dashboard():
                                 <div class="sensor-status {temp_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Temperature" data-th="อุณหภูมิ">Temperature</div>
-                            <div class="sensor-value">{current_temp_max:.1f}<span class="sensor-unit">°C</span></div>
-                            <div style="font-size: 0.7rem; color: var(--gray-500);"><span data-en="Min" data-th="ต่ำสุด">Min</span>: {current_temp_min:.1f}°C</div>
+                            <div class="sensor-value">{current_temp_max:.2f}<span class="sensor-unit">°C</span></div>
+                            <div style="font-size: 0.7rem; color: var(--gray-500);"><span data-en="Max" data-th="สูงสุด">Max</span> | <span data-en="Min" data-th="ต่ำสุด">Min</span>: {current_temp_min:.2f}°C</div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_temp_max/50*100, 100)}%; background: var(--primary);"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -5000,7 +5013,7 @@ async def dashboard():
                                 <div class="sensor-status {humidity_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Humidity" data-th="ความชื้น">Humidity</div>
-                            <div class="sensor-value">{current_humidity:.0f}<span class="sensor-unit">%</span></div>
+                            <div class="sensor-value">{current_humidity:.2f}<span class="sensor-unit">%</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {current_humidity}%; background: #42a5f5;"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -5018,7 +5031,7 @@ async def dashboard():
                                 <div class="sensor-status {solar_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Solar Radiation" data-th="รังสีดวงอาทิตย์">Solar Radiation</div>
-                            <div class="sensor-value">{current_solar_wm2:.0f}<span class="sensor-unit">W/m²</span></div>
+                            <div class="sensor-value">{current_solar_wm2:.2f}<span class="sensor-unit">W/m²</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_solar_wm2/10, 100)}%; background: #ffa726;"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -5027,7 +5040,7 @@ async def dashboard():
                                 <div class="sensor-status {rain_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Rainfall" data-th="ปริมาณฝน">Rainfall</div>
-                            <div class="sensor-value">{current_rainfall:.1f}<span class="sensor-unit">mm</span></div>
+                            <div class="sensor-value">{current_rainfall:.2f}<span class="sensor-unit">mm</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_rainfall*5, 100)}%; background: #2196f3;"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -5036,7 +5049,7 @@ async def dashboard():
                                 <div class="sensor-status {pressure_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Pressure" data-th="ความกดอากาศ">Pressure</div>
-                            <div class="sensor-value">{current_pressure:.0f}<span class="sensor-unit">hPa</span></div>
+                            <div class="sensor-value">{current_pressure:.2f}<span class="sensor-unit">hPa</span></div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min((current_pressure-950)/100*100, 100) if current_pressure else 0}%; background: #9c27b0;"></div></div>
                         </div>
                         <div class="sensor-card">
@@ -5045,7 +5058,7 @@ async def dashboard():
                                 <div class="sensor-status {sunshine_status_class}"></div>
                             </div>
                             <div class="sensor-name" data-en="Sunshine" data-th="แสงแดด">Sunshine</div>
-                            <div class="sensor-value">{current_sunshine_hours:.3f}<span class="sensor-unit">hrs</span></div>
+                            <div class="sensor-value">{current_sunshine_hours:.4f}<span class="sensor-unit">hrs</span></div>
                             <div style="font-size: 0.7rem; color: var(--gray-500);" data-en="Last 15-min period (max 0.25h)" data-th="ช่วง 15 นาทีล่าสุด (สูงสุด 0.25 ชม.)">Last 15-min period (max 0.25h)</div>
                             <div class="sensor-bar"><div class="sensor-bar-fill" style="width: {min(current_sunshine_hours/0.25*100, 100)}%; background: #ffb300;"></div></div>
                         </div>
