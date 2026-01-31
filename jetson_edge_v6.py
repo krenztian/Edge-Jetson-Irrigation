@@ -4786,6 +4786,10 @@ async def dashboard():
     }
 
     # Load from daily_values_history (stored at 6:01 AM each day)
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    today_label = datetime.now().strftime('%m/%d')
+    today_in_history = False
+
     for entry in daily_values_history:
         if entry.get("date"):
             # Format date as MM/DD
@@ -4798,20 +4802,25 @@ async def dashboard():
             daily_history['etc'].append(round(entry.get("etc_mm_day", 0), 2))
             daily_history['rn'].append(round(entry.get("rn_mj_m2_day", 0), 2))
 
-    # If no history yet but we have today's prediction, add it
-    if not daily_history['labels'] and daily_prediction_result.get("eto_prediction"):
-        pred_date = daily_prediction_result.get("last_prediction_date", "")
-        if pred_date:
-            try:
-                d = datetime.strptime(pred_date, "%Y-%m-%d")
-                daily_history['labels'].append(d.strftime('%m/%d'))
-            except:
-                daily_history['labels'].append(pred_date[-5:])
+            # Check if today is already in history
+            if entry["date"] == today_str:
+                today_in_history = True
+
+    # Always add/update today's current values (from live prediction)
+    # This ensures the graph shows the same ETc as the sidebar
+    if daily_prediction_result.get("eto_prediction") or current_eto > 0 or current_etc > 0:
+        if today_in_history:
+            # Update today's values with current live values
+            if daily_history['labels'] and daily_history['labels'][-1] == today_label:
+                daily_history['eto'][-1] = round(current_eto, 2)
+                daily_history['etc'][-1] = round(current_etc, 2)
+                daily_history['rn'][-1] = round(current_rn_est, 2)
         else:
-            daily_history['labels'].append(datetime.now().strftime('%m/%d'))
-        daily_history['eto'].append(round(daily_prediction_result["eto_prediction"].get("eto_mm_day", 0), 2))
-        daily_history['etc'].append(round(latest_irrigation.get("etc_mm_day", 0) if latest_irrigation else 0, 2))
-        daily_history['rn'].append(round(daily_prediction_result["eto_prediction"].get("estimated_rad", 0), 2))
+            # Add today's values
+            daily_history['labels'].append(today_label)
+            daily_history['eto'].append(round(current_eto, 2))
+            daily_history['etc'].append(round(current_etc, 2))
+            daily_history['rn'].append(round(current_rn_est, 2))
 
     html_content = f"""
     <!DOCTYPE html>
@@ -5663,33 +5672,45 @@ async def dashboard():
                     </div>
                 </div>
 
-                <!-- Daily ET History Section -->
+                <!-- AI Climate Analysis Section -->
                 <div class="daily-section">
                     <div class="section-header">
                         <div class="section-icon green">🤖</div>
-                        <span class="section-title" data-en="AI Climate History" data-th="ประวัติสภาพอากาศ AI">AI Climate History</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="ETo, ETc, Rn - Last 10 Days" data-th="ETo, ETc, Rn - 10 วันล่าสุด">ETo, ETc, Rn - Last 10 Days</span>
+                        <span class="section-title" data-en="AI Climate Analysis" data-th="วิเคราะห์สภาพอากาศ AI">AI Climate Analysis</span>
+                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="Last 10 Days" data-th="10 วันล่าสุด">Last 10 Days</span>
                     </div>
-                    <!-- Daily ET History Chart (Last 10 Days) -->
-                    <div class="chart-card" style="margin-top: 16px;">
-                        <div class="chart-header">
-                            <span class="chart-title">📊 <span data-en="Daily ET History (Last 10 Days)" data-th="ประวัติ ET รายวัน (10 วันล่าสุด)">Daily ET History (Last 10 Days)</span></span>
-                            <div style="display: flex; gap: 12px; font-size: 0.7rem;">
-                                <span style="display: flex; align-items: center; gap: 4px;">
-                                    <span style="width: 12px; height: 3px; background: #0077B6; border-radius: 2px;"></span>
-                                    ETo
-                                </span>
-                                <span style="display: flex; align-items: center; gap: 4px;">
-                                    <span style="width: 12px; height: 3px; background: #10B981; border-radius: 2px;"></span>
-                                    ETc
-                                </span>
-                                <span style="display: flex; align-items: center; gap: 4px;">
-                                    <span style="width: 12px; height: 3px; background: #F59E0B; border-radius: 2px;"></span>
-                                    Rn
-                                </span>
+                    <!-- Two charts side by side -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+                        <!-- Daily Plant Water Loss Chart (ETo + ETc) -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">🌱 <span data-en="Daily Plant Water Loss" data-th="การสูญเสียน้ำพืชรายวัน">Daily Plant Water Loss</span></span>
+                                <div style="display: flex; gap: 12px; font-size: 0.7rem;">
+                                    <span style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="width: 12px; height: 3px; background: #0077B6; border-radius: 2px;"></span>
+                                        ETo
+                                    </span>
+                                    <span style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="width: 12px; height: 3px; background: #10B981; border-radius: 2px;"></span>
+                                        ETc
+                                    </span>
+                                </div>
                             </div>
+                            <div class="chart-container" style="height: 180px;"><canvas id="dailyETChart"></canvas></div>
                         </div>
-                        <div class="chart-container" style="height: 200px;"><canvas id="dailyETChart"></canvas></div>
+                        <!-- Net Radiation Chart (Rn) -->
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">☀️ <span data-en="Net Radiation (Rn)" data-th="รังสีสุทธิ (Rn)">Net Radiation (Rn)</span></span>
+                                <div style="display: flex; gap: 12px; font-size: 0.7rem;">
+                                    <span style="display: flex; align-items: center; gap: 4px;">
+                                        <span style="width: 12px; height: 3px; background: #F59E0B; border-radius: 2px;"></span>
+                                        Rn (MJ/m²)
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="chart-container" style="height: 180px;"><canvas id="dailyRnChart"></canvas></div>
+                        </div>
                     </div>
                 </div>
 
@@ -5907,6 +5928,7 @@ async def dashboard():
             const dailyETcData = {json.dumps(daily_history['etc'][-10:])};
             const dailyRnData = {json.dumps(daily_history['rn'][-10:])};
 
+            // Daily Plant Water Loss Chart (ETo + ETc only)
             new Chart(document.getElementById('dailyETChart').getContext('2d'), {{
                 type: 'line',
                 data: {{
@@ -5932,17 +5954,6 @@ async def dashboard():
                             tension: 0.3,
                             pointRadius: 4,
                             pointBackgroundColor: '#10B981',
-                            borderWidth: 2
-                        }},
-                        {{
-                            label: 'Rn (MJ/m²/day)',
-                            data: dailyRnData,
-                            borderColor: '#F59E0B',
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            fill: false,
-                            tension: 0.3,
-                            pointRadius: 4,
-                            pointBackgroundColor: '#F59E0B',
                             borderWidth: 2
                         }}
                     ]
@@ -5985,12 +5996,13 @@ async def dashboard():
                             ticks: {{
                                 color: '#9CA3AF',
                                 font: {{ size: 9 }},
-                                maxRotation: 45
+                                maxRotation: 0
                             }},
                             grid: {{ display: false }}
                         }},
                         y: {{
                             display: true,
+                            beginAtZero: true,
                             ticks: {{
                                 color: '#9CA3AF',
                                 font: {{ size: 9 }}
@@ -5998,7 +6010,75 @@ async def dashboard():
                             grid: {{ color: 'rgba(0,0,0,0.05)' }},
                             title: {{
                                 display: true,
-                                text: 'Value',
+                                text: 'mm/day',
+                                font: {{ size: 10 }},
+                                color: '#9CA3AF'
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+
+            // Net Radiation (Rn) Chart - Separate
+            new Chart(document.getElementById('dailyRnChart').getContext('2d'), {{
+                type: 'line',
+                data: {{
+                    labels: dailyETLabels,
+                    datasets: [
+                        {{
+                            label: 'Rn (MJ/m²/day)',
+                            data: dailyRnData,
+                            borderColor: '#F59E0B',
+                            backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#F59E0B',
+                            borderWidth: 2
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {{
+                        legend: {{
+                            display: false
+                        }},
+                        tooltip: {{
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleFont: {{ size: 11 }},
+                            bodyFont: {{ size: 10 }},
+                            padding: 8,
+                            callbacks: {{
+                                label: function(context) {{
+                                    const value = context.parsed.y;
+                                    return `Rn: ${{value.toFixed(2)}} MJ/m²/day`;
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            ticks: {{
+                                color: '#9CA3AF',
+                                font: {{ size: 9 }},
+                                maxRotation: 0
+                            }},
+                            grid: {{ display: false }}
+                        }},
+                        y: {{
+                            display: true,
+                            beginAtZero: true,
+                            ticks: {{
+                                color: '#9CA3AF',
+                                font: {{ size: 9 }}
+                            }},
+                            grid: {{ color: 'rgba(0,0,0,0.05)' }},
+                            title: {{
+                                display: true,
+                                text: 'MJ/m²/day',
                                 font: {{ size: 10 }},
                                 color: '#9CA3AF'
                             }}
