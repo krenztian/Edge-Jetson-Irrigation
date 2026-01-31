@@ -98,6 +98,13 @@ sensor_status = {
     "vpd": {"online": False, "last_update": None, "value": None}
 }
 
+# Live sensor readings metadata (for dashboard display)
+live_sensor_metadata = {
+    "data_source": None,  # "live" = ESP32, "influxdb" = recovered from cloud
+    "original_timestamp": None,  # When the data was actually collected
+    "loaded_at": None  # When we loaded this data
+}
+
 # Growth stage tracking
 growth_stage_config = {
     "start_date": None,  # Date when growth cycle started
@@ -501,6 +508,75 @@ def update_sensor_status(sensor_name: str, value, online: bool = True):
             "value": value
         }
 
+def load_latest_sensor_data_from_influxdb():
+    """
+    On startup, fetch the latest aggregated sensor data from InfluxDB
+    and populate the dashboard's Live Sensor Readings with timestamp annotation.
+    """
+    global live_sensor_metadata
+
+    if not INFLUXDB_AVAILABLE:
+        logger.warning("InfluxDB not available - cannot load latest sensor data")
+        return False
+
+    latest = influx_recovery.query_latest_record()
+
+    if not latest:
+        logger.info("No recent sensor data found in InfluxDB")
+        return False
+
+    # Parse the original timestamp
+    original_ts = latest.get("timestamp", "")
+    try:
+        # Parse ISO format timestamp
+        if "+" in original_ts or original_ts.endswith("Z"):
+            # Has timezone info
+            ts_dt = datetime.fromisoformat(original_ts.replace("Z", "+00:00"))
+        else:
+            ts_dt = datetime.fromisoformat(original_ts)
+        formatted_ts = ts_dt.strftime("%Y-%m-%d %H:%M")
+    except:
+        formatted_ts = original_ts[:16] if original_ts else "Unknown"
+
+    # Update sensor status with values from InfluxDB
+    temp_avg = latest.get("temp_avg_15")
+    if temp_avg is None and latest.get("temp_min_15") and latest.get("temp_max_15"):
+        temp_avg = (latest["temp_min_15"] + latest["temp_max_15"]) / 2
+
+    if temp_avg is not None:
+        update_sensor_status("temperature", temp_avg, True)
+    if latest.get("rh_avg_15") is not None:
+        update_sensor_status("humidity", latest["rh_avg_15"], True)
+    if latest.get("pressure_avg_15") is not None:
+        update_sensor_status("pressure", latest["pressure_avg_15"], True)
+    if latest.get("wind_avg_15") is not None:
+        update_sensor_status("wind", latest["wind_avg_15"], True)
+    if latest.get("solar_avg_15") is not None:
+        update_sensor_status("solar", latest["solar_avg_15"], True)
+    if latest.get("rain_mm_15") is not None:
+        update_sensor_status("rain", latest["rain_mm_15"], True)
+    if latest.get("vpd_avg_15") is not None:
+        update_sensor_status("vpd", latest["vpd_avg_15"], True)
+
+    # Update metadata for dashboard display
+    live_sensor_metadata = {
+        "data_source": "influxdb",
+        "original_timestamp": formatted_ts,
+        "loaded_at": datetime.now().isoformat()
+    }
+
+    logger.info(f"Loaded latest sensor data from InfluxDB (collected at {formatted_ts})")
+    return True
+
+def update_live_sensor_metadata_from_esp32():
+    """Called when we receive fresh data from ESP32"""
+    global live_sensor_metadata
+    live_sensor_metadata = {
+        "data_source": "live",
+        "original_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "loaded_at": datetime.now().isoformat()
+    }
+
 # =========================
 # Valve Controller Communication
 # =========================
@@ -853,6 +929,55 @@ class InfluxDBRecovery:
         except Exception as e:
             logger.error(f"Failed to query records from 6:01 AM: {e}")
             return []
+
+    def query_latest_record(self):
+        """
+        Query the most recent 15-minute aggregate from InfluxDB.
+        Used on startup to populate dashboard with latest sensor readings.
+        """
+        if not self.client:
+            return None
+
+        try:
+            # Get the latest record from the last 24 hours
+            query = f'''
+            from(bucket: "{INFLUXDB_CONFIG['bucket']}")
+                |> range(start: -24h)
+                |> filter(fn: (r) => r["_measurement"] == "weather_15min")
+                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> sort(columns: ["_time"], desc: true)
+                |> limit(n: 1)
+            '''
+
+            logger.info("Querying InfluxDB for latest sensor record...")
+            tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
+
+            for table in tables:
+                for record in table.records:
+                    latest = {
+                        "timestamp": record.get_time().isoformat(),
+                        "temp_min_15": record.values.get("temp_min_15"),
+                        "temp_max_15": record.values.get("temp_max_15"),
+                        "temp_avg_15": record.values.get("temp_avg_15"),
+                        "rh_avg_15": record.values.get("rh_avg_15"),
+                        "pressure_avg_15": record.values.get("pressure_avg_15"),
+                        "wind_avg_15": record.values.get("wind_avg_15"),
+                        "wind_max_15": record.values.get("wind_max_15"),
+                        "solar_avg_15": record.values.get("solar_avg_15"),
+                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "rain_mm_15": record.values.get("rain_mm_15"),
+                        "vpd_avg_15": record.values.get("vpd_avg_15"),
+                        "device": record.values.get("device", "ESP32")
+                    }
+                    logger.info(f"Retrieved latest record from {latest['timestamp']}")
+                    return latest
+
+            logger.info("No recent records found in InfluxDB")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to query latest record: {e}")
+            return None
 
     def close(self):
         if self.client:
@@ -1601,13 +1726,20 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] Step 4: Recovering missed data from InfluxDB...")
     await check_and_recover_missed_data()
 
-    # Step 5: Update growth day based on saved start_date
-    logger.info("[STARTUP] Step 5: Updating growth day...")
+    # Step 5: Load latest sensor data for Live Dashboard
+    logger.info("[STARTUP] Step 5: Loading latest sensor data from InfluxDB...")
+    if load_latest_sensor_data_from_influxdb():
+        logger.info(f"  Live dashboard populated with data from: {live_sensor_metadata.get('original_timestamp', 'Unknown')}")
+    else:
+        logger.info("  No recent sensor data available - dashboard will update when ESP32 sends data")
+
+    # Step 6: Update growth day based on saved start_date
+    logger.info("[STARTUP] Step 6: Updating growth day...")
     update_growth_day()
     save_growth_stage_config()  # Save the updated day
 
-    # Step 6: Start background scheduler
-    logger.info("[STARTUP] Step 6: Starting 6:01 AM daily scheduler...")
+    # Step 7: Start background scheduler
+    logger.info("[STARTUP] Step 7: Starting 6:01 AM daily scheduler...")
 
     # Combined 6:01 AM scheduler (growth day update + daily prediction)
     scheduler_thread = threading.Thread(target=daily_scheduler, daemon=True)
@@ -2841,6 +2973,9 @@ async def receive_15min_data(data: dict):
         vpd_online = temp_online and humidity_online
         if record["vpd_avg_15"] is not None:
             update_sensor_status("vpd", record["vpd_avg_15"], vpd_online)
+
+        # Mark data as "live" from ESP32 (not recovered from InfluxDB)
+        update_live_sensor_metadata_from_esp32()
 
         # Get local storage stats
         today = date.today()
@@ -4827,7 +4962,12 @@ async def dashboard():
                     <div class="section-header">
                         <div class="section-icon blue">📡</div>
                         <span class="section-title" data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
-                        <span style="margin-left: auto; font-size: 0.75rem; color: var(--gray-500);" data-en="15-min aggregates from ESP32" data-th="ข้อมูลรวม 15 นาทีจาก ESP32">15-min aggregates from ESP32</span>
+                        <div style="margin-left: auto; text-align: right;">
+                            <span style="font-size: 0.75rem; color: var(--gray-500);">
+                                {f'<span style="color: #10B981;">● Live</span> from ESP32' if live_sensor_metadata.get("data_source") == "live" else f'<span style="color: #F59E0B;">● Restored</span> from InfluxDB' if live_sensor_metadata.get("data_source") == "influxdb" else '<span style="color: #9CA3AF;">● Waiting for data</span>'}
+                            </span>
+                            {f'<div style="font-size: 0.65rem; color: var(--gray-400);">Collected: {live_sensor_metadata.get("original_timestamp", "N/A")}</div>' if live_sensor_metadata.get("original_timestamp") else ''}
+                        </div>
                     </div>
                     <div class="sensor-grid">
                         <div class="sensor-card">
