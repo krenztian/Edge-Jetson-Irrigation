@@ -739,36 +739,36 @@ class InfluxDBRecovery:
             })
             return []
 
-    def query_15min_records_from_6am_today(self):
+    def query_15min_records_for_eto_day(self, eto_date: date):
         """
-        Query 15-minute aggregate records from 6:00 AM today until now.
-        This is the new "day" boundary for the irrigation system.
+        Query 15-minute records for ETo calculation.
+        ETo "day" = 6:01 AM on eto_date to 6:00 AM on eto_date+1
+
+        Example: eto_date = Jan 30
+        Returns records from Jan 30 6:01 AM to Jan 31 6:00 AM (96 expected)
         """
         if not self.query_api:
             if not self.connect():
                 return []
 
         try:
-            # Calculate 6:00 AM today in UTC (adjust for local timezone)
-            now = datetime.now()
-            today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+            # Start: 6:01 AM on eto_date
+            start_dt = datetime.combine(eto_date, datetime.min.time().replace(hour=6, minute=1, second=0))
+            # End: 6:00 AM on eto_date + 1 day
+            end_dt = start_dt + timedelta(hours=23, minutes=59)
 
-            # If it's before 6 AM, use yesterday's 6 AM
-            if now < today_6am:
-                today_6am = today_6am - timedelta(days=1)
-
-            # Format for InfluxDB query (RFC3339)
-            start_time = today_6am.strftime("%Y-%m-%dT%H:%M:%SZ")
+            start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            end_time = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
             query = f'''
             from(bucket: "{INFLUXDB_CONFIG['bucket']}")
-                |> range(start: {start_time})
+                |> range(start: {start_time}, stop: {end_time})
                 |> filter(fn: (r) => r["_measurement"] == "weather_15min")
                 |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
                 |> sort(columns: ["_time"], desc: false)
             '''
 
-            logger.info(f"Querying InfluxDB for 15-min records from {start_time} to now...")
+            logger.info(f"Querying InfluxDB for ETo day: {start_time} to {end_time}")
             tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
 
             records = []
@@ -790,11 +790,68 @@ class InfluxDBRecovery:
                         "device": record.values.get("device", "ESP32")
                     })
 
-            logger.info(f"Retrieved {len(records)} 15-min records from 6:00 AM today")
+            logger.info(f"Retrieved {len(records)}/96 records for ETo day {eto_date}")
             return records
 
         except Exception as e:
-            logger.error(f"Failed to query 15-min records from 6AM: {e}")
+            logger.error(f"Failed to query ETo day records: {e}")
+            return []
+
+    def query_15min_records_from_6am_today(self):
+        """
+        Query 15-minute aggregate records from 6:01 AM today until now.
+        Used for recovering missing records for TODAY's display.
+        """
+        if not self.query_api:
+            if not self.connect():
+                return []
+
+        try:
+            now = datetime.now()
+            # Calculate 6:01 AM today (the start of "today" for our system)
+            today_601am = now.replace(hour=6, minute=1, second=0, microsecond=0)
+
+            # If it's before 6:01 AM, use yesterday's 6:01 AM
+            if now < today_601am:
+                today_601am = today_601am - timedelta(days=1)
+
+            start_time = today_601am.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            query = f'''
+            from(bucket: "{INFLUXDB_CONFIG['bucket']}")
+                |> range(start: {start_time})
+                |> filter(fn: (r) => r["_measurement"] == "weather_15min")
+                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> sort(columns: ["_time"], desc: false)
+            '''
+
+            logger.info(f"Querying InfluxDB from 6:01 AM today ({start_time}) to now...")
+            tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
+
+            records = []
+            for table in tables:
+                for record in table.records:
+                    records.append({
+                        "timestamp": record.get_time().isoformat(),
+                        "temp_min_15": record.values.get("temp_min_15"),
+                        "temp_max_15": record.values.get("temp_max_15"),
+                        "temp_avg_15": record.values.get("temp_avg_15"),
+                        "rh_avg_15": record.values.get("rh_avg_15"),
+                        "pressure_avg_15": record.values.get("pressure_avg_15"),
+                        "wind_avg_15": record.values.get("wind_avg_15"),
+                        "wind_max_15": record.values.get("wind_max_15"),
+                        "solar_avg_15": record.values.get("solar_avg_15"),
+                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "rain_mm_15": record.values.get("rain_mm_15"),
+                        "vpd_avg_15": record.values.get("vpd_avg_15"),
+                        "device": record.values.get("device", "ESP32")
+                    })
+
+            logger.info(f"Retrieved {len(records)} records from 6:01 AM today")
+            return records
+
+        except Exception as e:
+            logger.error(f"Failed to query records from 6:01 AM: {e}")
             return []
 
     def close(self):
@@ -943,18 +1000,17 @@ def add_daily_value_to_history(eto: float, etc: float, rn: float, prediction_dat
 
 def clear_previous_day_raw_data():
     """
-    Clear raw 15-min records from before 6:00 AM today.
+    Clear raw 15-min records from before 6:01 AM today.
     Called at 6:01 AM after daily prediction is complete.
-    Keeps only today's data (from 6:00 AM onwards).
+    Keeps only today's data (from 6:01 AM onwards).
+
+    This ensures local storage only contains "today's" records for dashboard display.
+    Historical data is preserved in InfluxDB.
     """
     global local_15min_records
 
-    now = datetime.now()
-    today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
-
-    # If before 6 AM, use yesterday's 6 AM as cutoff
-    if now < today_6am:
-        today_6am = today_6am - timedelta(days=1)
+    # Use the helper function to get correct 6:01 AM boundary
+    today_601am = get_today_601am()
 
     old_count = len(local_15min_records)
     records_to_keep = []
@@ -964,12 +1020,12 @@ def clear_previous_day_raw_data():
             ts_str = record.get("timestamp") or record.get("received_at")
             if ts_str:
                 if "T" in ts_str:
-                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "").split("+")[0])
                 else:
                     ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
 
-                # Keep only records from 6:00 AM today onwards
-                if ts >= today_6am:
+                # Keep only records from 6:01 AM today onwards
+                if ts >= today_601am:
                     records_to_keep.append(record)
         except Exception as e:
             logger.debug(f"Error parsing timestamp during cleanup: {e}")
@@ -982,7 +1038,7 @@ def clear_previous_day_raw_data():
         local_15min_records.append(record)
 
     removed_count = old_count - len(local_15min_records)
-    logger.info(f"[CLEANUP] Cleared {removed_count} old records. Kept {len(local_15min_records)} records from today (since 6:00 AM)")
+    logger.info(f"[CLEANUP] Cleared {removed_count} old records. Kept {len(local_15min_records)} records from today (since 6:01 AM)")
 
     # Save the cleaned records
     save_15min_records()
@@ -1037,37 +1093,44 @@ def calculate_daily_aggregates_from_15min(records: list) -> dict:
 
 async def run_daily_prediction(target_date: date = None):
     """
-    Run daily ETo prediction using aggregated data
-    HYBRID APPROACH: Uses local storage first, InfluxDB as fallback
-    Called at 6:00 AM for yesterday's data
+    Run daily ETo prediction using aggregated data.
+
+    IMPORTANT: ETo "day" is defined as 6:01 AM to 6:00 AM (next day).
+    - target_date = the date label for this ETo (e.g., Jan 30)
+    - Actual data window = Jan 30 6:01 AM → Jan 31 6:00 AM
+
+    Data Source: InfluxDB (source of truth for complete 24h data)
+    Fallback: Local storage if InfluxDB unavailable
+
+    Called at 6:01 AM for "yesterday's" ETo calculation.
     """
     global daily_prediction_result
 
     if target_date is None:
-        target_date = date.today() - timedelta(days=1)  # Yesterday
+        # "Yesterday" in ETo terms means the 24h window that just ended at 6:00 AM today
+        target_date = date.today() - timedelta(days=1)
 
-    logger.info(f"=== RUNNING DAILY PREDICTION FOR {target_date} ===")
+    logger.info("=" * 60)
+    logger.info(f"DAILY ETo PREDICTION FOR: {target_date}")
+    logger.info(f"Data window: {target_date} 6:01 AM → {target_date + timedelta(days=1)} 6:00 AM")
+    logger.info("=" * 60)
 
-    # STEP 1: Try to get records from local storage first
-    records = get_local_15min_records_for_date(target_date)
-    data_source = "local"
+    # STEP 1: Query InfluxDB for the exact ETo day window (6:01 AM → 6:00 AM next day)
+    # InfluxDB is the source of truth for complete 24h data
+    records = influx_recovery.query_15min_records_for_eto_day(target_date)
+    data_source = "influxdb"
 
-    # Check if we have enough local data (at least 50% = 48 records)
-    if len(records) < 48:
-        logger.info(f"Local data incomplete ({len(records)}/96). Querying InfluxDB as fallback...")
-        influx_records = influx_recovery.query_15min_records_for_date(target_date)
+    # STEP 2: If InfluxDB fails or returns nothing, try local storage as fallback
+    if not records:
+        logger.warning("InfluxDB returned no records. Trying local storage as fallback...")
+        records = get_local_15min_records_for_date(target_date)
+        data_source = "local"
 
-        if influx_records and len(influx_records) > len(records):
-            records = influx_records
-            data_source = "influxdb"
-            logger.info(f"Using InfluxDB data: {len(records)} records")
-        elif records:
-            logger.info(f"InfluxDB returned fewer/no records. Using local data: {len(records)} records")
-        else:
-            logger.warning(f"No 15-min records found for {target_date} (local or InfluxDB)")
+        if not records:
+            logger.error(f"No records found for {target_date} in InfluxDB or local storage")
             return None
-    else:
-        logger.info(f"Using local data: {len(records)} records (sufficient coverage)")
+
+    logger.info(f"Data source: {data_source.upper()} | Records: {len(records)}/96")
 
     # Calculate data completeness
     expected_records = 96  # 24 hours × 4 records/hour
@@ -1351,103 +1414,165 @@ def load_models():
 # =========================
 # Startup Recovery Check
 # =========================
+def get_today_601am():
+    """
+    Get the 6:01 AM boundary for "today".
+    If current time is before 6:01 AM, "today" started at 6:01 AM yesterday.
+    """
+    now = datetime.now()
+    today_601am = now.replace(hour=6, minute=1, second=0, microsecond=0)
+
+    if now < today_601am:
+        today_601am = today_601am - timedelta(days=1)
+
+    return today_601am
+
+
+def get_yesterday_eto_window():
+    """
+    Get the 24-hour window for ETo calculation (yesterday).
+    Returns (start, end) where:
+    - start = 6:01 AM yesterday
+    - end = 6:00 AM today
+
+    Example at Jan 31 7:00 AM:
+    - Returns (Jan 30 6:01 AM, Jan 31 6:00 AM)
+    """
+    now = datetime.now()
+    today_601am = now.replace(hour=6, minute=1, second=0, microsecond=0)
+
+    # If before 6:01 AM, we're still in "yesterday's" day
+    if now < today_601am:
+        today_601am = today_601am - timedelta(days=1)
+
+    # Yesterday's ETo window
+    yesterday_start = today_601am - timedelta(days=1)  # 6:01 AM yesterday
+    yesterday_end = today_601am - timedelta(minutes=1)  # 6:00 AM today
+
+    return yesterday_start, yesterday_end
+
+
 async def check_and_recover_missed_data():
     """
-    Enhanced recovery: Check for gaps between local data and InfluxDB
-    Uses weather_15min measurement (V5 architecture)
+    CLEAN RECOVERY LOGIC:
+    1. Get timestamps of records we already have locally (since 6:01 AM today)
+    2. Query InfluxDB for records since 6:01 AM today
+    3. Add ONLY the missing records (ones we don't have locally)
+
+    This ensures:
+    - No duplicates (we only add what's missing)
+    - Correct day boundary (6:01 AM)
+    - Clean data for dashboard display
     """
     global last_processed_timestamp, recovery_status
 
-    logger.info("Checking for missed data to recover...")
+    logger.info("=" * 50)
+    logger.info("RECOVERY: Checking for missing data since 6:01 AM today")
+    logger.info("=" * 50)
+
     recovery_status["last_recovery_attempt"] = datetime.now().isoformat()
+    today_601am = get_today_601am()
 
-    # First, determine what data we already have locally
-    local_count = len(local_15min_records)
-    latest_local_timestamp = None
+    # STEP 1: Build set of timestamps we already have locally (since 6:01 AM today)
+    local_timestamps = set()
+    local_today_count = 0
 
-    if local_15min_records:
-        # Get the latest timestamp from local records
-        for record in reversed(list(local_15min_records)):
-            ts = record.get("timestamp") or record.get("received_at")
-            if ts:
-                latest_local_timestamp = ts
-                break
-
-    logger.info(f"Local records: {local_count}, Latest timestamp: {latest_local_timestamp}")
-
-    # Query InfluxDB for records we might be missing
-    # If we have local data, only query for newer records
-    hours_to_query = 24
-    if latest_local_timestamp:
-        try:
-            # Parse the timestamp and calculate hours since
-            if "T" in latest_local_timestamp:
-                last_dt = datetime.fromisoformat(latest_local_timestamp.replace("Z", ""))
-            else:
-                last_dt = datetime.strptime(latest_local_timestamp, "%Y-%m-%d %H:%M:%S")
-            hours_since = (datetime.now() - last_dt).total_seconds() / 3600
-            hours_to_query = max(1, min(int(hours_since) + 1, 48))  # Cap at 48 hours
-            logger.info(f"Querying InfluxDB for last {hours_to_query} hours to fill gaps")
-        except Exception as e:
-            logger.warning(f"Could not parse latest timestamp, using 24h recovery: {e}")
-
-    # Query InfluxDB for 15-min records (V5 architecture)
-    records = influx_recovery.query_15min_records_for_recovery(hours_back=hours_to_query)
-
-    if records:
-        recovered_count = 0
-        existing_timestamps = set()
-
-        # Build set of existing timestamps to avoid duplicates
-        for record in local_15min_records:
-            ts = record.get("timestamp") or record.get("received_at")
-            if ts:
-                existing_timestamps.add(ts[:19])  # Normalize to seconds precision
-
-        for record in records:
+    for record in local_15min_records:
+        ts_str = record.get("timestamp") or record.get("received_at")
+        if ts_str:
             try:
-                record_ts = record.get("timestamp", "")[:19]
+                if "T" in ts_str:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "").split("+")[0])
+                else:
+                    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
 
-                # Skip if we already have this record
-                if record_ts in existing_timestamps:
-                    continue
-
-                # Add to local_15min_records for chart updates
-                local_record = {
-                    "timestamp": record["timestamp"],
-                    "received_at": datetime.now().isoformat(),
-                    "temp_min_15": record.get("temp_min_15"),
-                    "temp_max_15": record.get("temp_max_15"),
-                    "temp_avg_15": record.get("temp_avg_15"),
-                    "rh_avg_15": record.get("rh_avg_15"),
-                    "pressure_avg_15": record.get("pressure_avg_15"),
-                    "wind_avg_15": record.get("wind_avg_15"),
-                    "wind_max_15": record.get("wind_max_15"),
-                    "solar_avg_15": record.get("solar_avg_15"),
-                    "sunshine_min_15": record.get("sunshine_min_15"),
-                    "rain_mm_15": record.get("rain_mm_15"),
-                    "vpd_avg_15": record.get("vpd_avg_15"),
-                    "device": record.get("device", "ESP32_RECOVERED"),
-                    "recovered": True
-                }
-                local_15min_records.append(local_record)
-                recovered_count += 1
-
+                # Only count records from today (since 6:01 AM)
+                if ts >= today_601am:
+                    # Normalize timestamp to minute precision for comparison
+                    ts_key = ts.strftime("%Y-%m-%d %H:%M")
+                    local_timestamps.add(ts_key)
+                    local_today_count += 1
             except Exception as e:
-                logger.error(f"Error processing recovered record: {e}")
+                logger.debug(f"Could not parse local timestamp: {ts_str} - {e}")
 
-        recovery_status["records_recovered"] = recovered_count
-        recovery_status["last_successful_recovery"] = datetime.now().isoformat()
-        logger.info(f"Recovered {recovered_count} new records from InfluxDB")
+    logger.info(f"Local records since 6:01 AM today: {local_today_count}")
+    logger.info(f"Local timestamps: {sorted(local_timestamps)[-5:] if local_timestamps else 'None'}...")
 
-        # Save the recovered records
-        if recovered_count > 0:
-            save_15min_records()
+    # STEP 2: Query InfluxDB for all records since 6:01 AM today
+    influx_records = influx_recovery.query_15min_records_from_6am_today()
 
-        if records:
-            last_processed_timestamp = records[-1]["timestamp"]
-    else:
-        logger.info("No missed data to recover from InfluxDB")
+    if not influx_records:
+        logger.info("No records in InfluxDB since 6:01 AM today")
+        return
+
+    logger.info(f"InfluxDB has {len(influx_records)} records since 6:01 AM today")
+
+    # STEP 3: Find records in InfluxDB that we DON'T have locally
+    recovered_count = 0
+    skipped_count = 0
+
+    for record in influx_records:
+        ts_str = record.get("timestamp", "")
+        if not ts_str:
+            continue
+
+        try:
+            # Parse InfluxDB timestamp
+            if "T" in ts_str:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "").split("+")[0])
+            else:
+                ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+
+            # Normalize to minute precision
+            ts_key = ts.strftime("%Y-%m-%d %H:%M")
+
+            # Check if we already have this record
+            if ts_key in local_timestamps:
+                skipped_count += 1
+                continue
+
+            # We don't have this record - add it
+            local_record = {
+                "timestamp": record["timestamp"],
+                "received_at": datetime.now().isoformat(),
+                "temp_min_15": record.get("temp_min_15"),
+                "temp_max_15": record.get("temp_max_15"),
+                "temp_avg_15": record.get("temp_avg_15"),
+                "rh_avg_15": record.get("rh_avg_15"),
+                "pressure_avg_15": record.get("pressure_avg_15"),
+                "wind_avg_15": record.get("wind_avg_15"),
+                "wind_max_15": record.get("wind_max_15"),
+                "solar_avg_15": record.get("solar_avg_15"),
+                "sunshine_min_15": record.get("sunshine_min_15"),
+                "rain_mm_15": record.get("rain_mm_15"),
+                "vpd_avg_15": record.get("vpd_avg_15"),
+                "device": record.get("device", "ESP32"),
+                "recovered": True,
+                "recovered_at": datetime.now().isoformat()
+            }
+            local_15min_records.append(local_record)
+            local_timestamps.add(ts_key)  # Add to set so we don't add duplicates
+            recovered_count += 1
+
+            logger.debug(f"Recovered missing record: {ts_key}")
+
+        except Exception as e:
+            logger.error(f"Error processing InfluxDB record: {e}")
+
+    # STEP 4: Save and report
+    recovery_status["records_recovered"] = recovered_count
+    recovery_status["records_skipped"] = skipped_count
+    recovery_status["last_successful_recovery"] = datetime.now().isoformat()
+
+    logger.info(f"RECOVERY COMPLETE:")
+    logger.info(f"  - Recovered: {recovered_count} missing records")
+    logger.info(f"  - Skipped: {skipped_count} (already had locally)")
+    logger.info(f"  - Total local records now: {len(local_15min_records)}")
+
+    if recovered_count > 0:
+        save_15min_records()
+        if influx_records:
+            last_processed_timestamp = influx_records[-1]["timestamp"]
 
 
 # =========================
