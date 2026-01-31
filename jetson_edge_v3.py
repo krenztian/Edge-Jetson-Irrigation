@@ -3965,8 +3965,6 @@ async def dashboard():
     latest_data = cycle_data if cycle_data else {}
     latest_irrigation = irrigation_history[-1] if irrigation_history else {}
 
-    current_rainfall = get_current_rainfall()
-
     # Prepare data for charts - use local_15min_records (from /receive-15min)
     history_data = {
         'labels': [], 'humidity': [], 'wind_speed': [], 'sunshine_hours': [],
@@ -4023,40 +4021,53 @@ async def dashboard():
     data_quality_warning = daily_prediction_result.get("eto_prediction", {}).get("data_quality_warning") if daily_prediction_result.get("eto_prediction") else None
     prediction_date = daily_prediction_result.get("last_prediction_date", "N/A")
 
-    # Temperature: use cycle_data if available, otherwise use sensor_status
-    current_temp_min = latest_data.get("input_data", {}).get("tmin", 0)
-    current_temp_max = latest_data.get("input_data", {}).get("tmax", 0)
-    if current_temp_min == 0 and current_temp_max == 0:
-        temp_val = sensor_status.get("temperature", {}).get("value")
-        if temp_val:
-            current_temp_min = temp_val
-            current_temp_max = temp_val
+    # =====================================================
+    # LIVE SENSOR READINGS - Use latest from local_15min_records (same as Raw Data)
+    # =====================================================
+    live_data_source = "waiting"
+    live_data_timestamp = "No data yet"
 
-    # Other sensors: use cycle_data if available, otherwise use sensor_status
-    current_humidity = latest_data.get("input_data", {}).get("humidity", 0)
-    if current_humidity == 0:
-        current_humidity = sensor_status.get("humidity", {}).get("value") or 0
-
-    current_wind = latest_data.get("input_data", {}).get("wind_speed", 0)
-    if current_wind == 0:
-        current_wind = sensor_status.get("wind", {}).get("value") or 0
-
-    # Sunshine hours from latest 15-min record
-    current_sunshine_hours = 0
     if local_15min_records:
-        latest_15min = list(local_15min_records)[-1]
-        current_sunshine_hours = latest_15min.get("sunshine_hours_15", 0) or 0
+        latest_record = list(local_15min_records)[-1]
 
-    current_pressure = latest_data.get("input_data", {}).get("pressure", 0) or 0
-    if current_pressure == 0:
-        current_pressure = sensor_status.get("pressure", {}).get("value") or 0
+        # Get all sensor values from the latest record
+        current_temp_min = latest_record.get("temp_min_15") or 0
+        current_temp_max = latest_record.get("temp_max_15") or 0
+        current_humidity = latest_record.get("rh_avg_15") or 0
+        current_wind = latest_record.get("wind_avg_15") or 0
+        current_pressure = latest_record.get("pressure_avg_15") or 0
+        current_solar_wm2 = latest_record.get("solar_avg_15") or 0
+        current_sunshine_hours = latest_record.get("sunshine_hours_15") or 0
+        current_rainfall = latest_record.get("rain_mm_15") or 0
+        current_vpd = latest_record.get("vpd_avg_15") or 0
 
-    current_vpd = latest_data.get("input_data", {}).get("vpd", 0) or 0
-    if current_vpd == 0:
-        current_vpd = sensor_status.get("vpd", {}).get("value") or 0
+        # Format timestamp for display
+        ts = latest_record.get("timestamp", latest_record.get("received_at", ""))
+        if ts:
+            try:
+                if "T" in str(ts):
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "").split("+")[0])
+                else:
+                    dt = datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S")
+                live_data_timestamp = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                live_data_timestamp = str(ts)[:16]
 
-    # Solar radiation from sensor (W/m²) - real-time from ESP32
-    current_solar_wm2 = get_current_solar_radiation()
+        # Determine data source
+        if latest_record.get("recovered"):
+            live_data_source = "restored"
+        else:
+            live_data_source = "live"
+    else:
+        # No data available
+        current_temp_min = 0
+        current_temp_max = 0
+        current_humidity = 0
+        current_wind = 0
+        current_pressure = 0
+        current_solar_wm2 = 0
+        current_sunshine_hours = 0
+        current_vpd = 0
 
     # Rn_est - already extracted above from daily_prediction_result or fallback
     current_rn_est = current_rad  # Use the value set earlier
@@ -4975,13 +4986,13 @@ async def dashboard():
                 <div class="sensors-section">
                     <div class="section-header">
                         <div class="section-icon blue">📡</div>
-                        <span class="section-title" data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
-                        <div style="margin-left: auto; text-align: right;">
-                            <span style="font-size: 0.75rem; color: var(--gray-500);">
-                                {f'<span style="color: #10B981;">● Live</span> from ESP32' if live_sensor_metadata.get("data_source") == "live" else f'<span style="color: #F59E0B;">● Restored</span> from InfluxDB' if live_sensor_metadata.get("data_source") == "influxdb" else '<span style="color: #9CA3AF;">● Waiting for data</span>'}
+                        <span class="section-title">
+                            <span data-en="Live Sensor Readings" data-th="ข้อมูลเซ็นเซอร์แบบเรียลไทม์">Live Sensor Readings</span>
+                            <span style="font-size: 0.7rem; font-weight: normal; margin-left: 8px;">
+                                {f'<span style="color: #10B981;">● Live</span>' if live_data_source == "live" else f'<span style="color: #F59E0B;">● Restored</span>' if live_data_source == "restored" else '<span style="color: #9CA3AF;">● Waiting</span>'}
+                                <span style="color: var(--gray-500); margin-left: 4px;">Collected: {live_data_timestamp}</span>
                             </span>
-                            {f'<div style="font-size: 0.65rem; color: var(--gray-400);">Collected: {live_sensor_metadata.get("original_timestamp", "N/A")}</div>' if live_sensor_metadata.get("original_timestamp") else ''}
-                        </div>
+                        </span>
                     </div>
                     <div class="sensor-grid">
                         <div class="sensor-card">
