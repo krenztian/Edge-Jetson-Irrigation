@@ -18,7 +18,7 @@ from pydantic import BaseModel, validator
 import numpy as np
 import uvicorn
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from pathlib import Path
 from typing import Optional, List
 from collections import deque
@@ -29,6 +29,59 @@ import os
 import math
 import asyncio
 import threading
+
+# Bangkok timezone (UTC+7)
+BANGKOK_TZ_OFFSET = timedelta(hours=7)
+
+def utc_to_bangkok(dt: datetime) -> datetime:
+    """Convert UTC datetime to Bangkok time (UTC+7)"""
+    if dt.tzinfo is None:
+        # Assume UTC if no timezone
+        return dt + BANGKOK_TZ_OFFSET
+    else:
+        # Convert from UTC to Bangkok
+        return dt.replace(tzinfo=None) + BANGKOK_TZ_OFFSET
+
+def parse_influx_timestamp_to_bangkok(ts_str: str) -> str:
+    """Parse InfluxDB timestamp (UTC) and convert to Bangkok time ISO format"""
+    try:
+        # Handle various formats
+        if ts_str.endswith('Z'):
+            ts_str = ts_str[:-1]  # Remove Z
+        if '+' in ts_str:
+            ts_str = ts_str.split('+')[0]  # Remove timezone offset
+
+        # Parse the datetime
+        if 'T' in ts_str:
+            dt = datetime.fromisoformat(ts_str)
+        else:
+            dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+
+        # Convert to Bangkok time
+        bangkok_dt = utc_to_bangkok(dt)
+        return bangkok_dt.isoformat()
+    except Exception:
+        return ts_str  # Return original if parsing fails
+
+def format_bangkok_time(ts_str: str) -> str:
+    """Format timestamp string to HH:MM in Bangkok time"""
+    try:
+        if ts_str.endswith('Z'):
+            ts_str = ts_str[:-1]
+        if '+' in ts_str:
+            ts_str = ts_str.split('+')[0]
+
+        if 'T' in ts_str:
+            dt = datetime.fromisoformat(ts_str)
+        else:
+            dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+
+        # Check if this looks like UTC (needs conversion)
+        # InfluxDB timestamps are always UTC
+        bangkok_dt = utc_to_bangkok(dt)
+        return bangkok_dt.strftime("%H:%M")
+    except Exception:
+        return "N/A"
 
 VALVE_IP = os.getenv("VALVE_IP", "10.157.111.93")
 
@@ -1099,10 +1152,14 @@ class InfluxDBRecovery:
             records = []
             for table in tables:
                 for record in table.records:
+                    # Convert InfluxDB UTC timestamp to Bangkok time
+                    utc_time = record.get_time()
+                    bangkok_time = utc_to_bangkok(utc_time.replace(tzinfo=None))
+
                     records.append({
                         "cycle": record.values.get("cycle_number"),
                         "cycle_date": cycle_date,
-                        "timestamp": record.get_time().isoformat(),
+                        "timestamp": bangkok_time.isoformat(),  # Now in Bangkok time
                         "temp_min_15": record.values.get("temp_min_15"),
                         "temp_max_15": record.values.get("temp_max_15"),
                         "temp_avg_15": record.values.get("temp_avg_15"),
@@ -1118,7 +1175,7 @@ class InfluxDBRecovery:
                         "recovered": True
                     })
 
-            logger.info(f"Retrieved {len(records)} cycles for {cycle_date}")
+            logger.info(f"Retrieved {len(records)} cycles for {cycle_date} (timestamps in Bangkok time)")
             return records
 
         except Exception as e:
@@ -3592,17 +3649,20 @@ async def raw_sensor_data_page():
         cycle_date = record.get("cycle_date", "N/A")
         total_cycles = record.get("total_cycles", 96)
 
-        # Format timestamp (just time portion)
+        # Recovered indicator
+        is_recovered = record.get("recovered", False)
+
+        # Format timestamp (just time portion) - already in Bangkok time from ESP32 or converted from InfluxDB
         timestamp = record.get("timestamp", record.get("received_at", "N/A"))
+
+        # For recovered records, timestamp is already converted to Bangkok time
+        # For ESP32 records, timestamp is already Bangkok time
         if timestamp and "T" in timestamp:
             time_only = timestamp.split("T")[1][:5]  # HH:MM
         elif timestamp and len(timestamp) > 10:
             time_only = timestamp[11:16]  # HH:MM
         else:
             time_only = "N/A"
-
-        # Recovered indicator
-        is_recovered = record.get("recovered", False)
         recovered_badge = '<span style="color: #F59E0B; font-size: 0.7rem;" title="Recovered from InfluxDB">⟳</span>' if is_recovered else ''
 
         # Format values with 2 decimal places
@@ -4673,20 +4733,49 @@ async def dashboard():
             if (document.getElementById('countdownTime')) {{ updateCountdown(); setInterval(updateCountdown, 1000); }}
             '''
 
-    # Prepare irrigation history for chart
+    # Prepare irrigation history for chart - show last 10 days with date labels
+    # Build a list of last 10 days, showing irrigation volume or 0 for each day
     irrigation_events = []
-    for event in list(irrigation_history)[-10:]:
+    today = date.today()
+
+    # Create a dict of daily irrigation totals from irrigation_history
+    daily_irrigation = {}
+    for event in list(irrigation_history):
         event_time = event.get('timestamp', '')
         if event_time:
             try:
                 dt = datetime.fromisoformat(str(event_time).replace('Z', '').split('+')[0])
-                irrigation_events.append({
-                    'time': dt.strftime('%m/%d %H:%M'),
-                    'volume': event.get('irrigation_volume_l_per_tree', 0),
-                    'needed': event.get('irrigation_needed', False)
-                })
+                day_key = dt.strftime('%Y-%m-%d')
+                volume = event.get('irrigation_volume_l_per_tree', 0) or 0
+                if day_key in daily_irrigation:
+                    daily_irrigation[day_key]['volume'] += volume
+                    daily_irrigation[day_key]['count'] += 1
+                else:
+                    daily_irrigation[day_key] = {'volume': volume, 'count': 1, 'needed': event.get('irrigation_needed', False)}
             except:
                 pass
+
+    # Generate last 10 days
+    for i in range(9, -1, -1):  # 9 days ago to today
+        day = today - timedelta(days=i)
+        day_str = day.strftime('%Y-%m-%d')
+        day_label = day.strftime('%m/%d')
+
+        if day_str in daily_irrigation:
+            irrigation_events.append({
+                'date': day_label,
+                'volume': round(daily_irrigation[day_str]['volume'], 1),
+                'needed': daily_irrigation[day_str]['needed'],
+                'count': daily_irrigation[day_str]['count']
+            })
+        else:
+            # No irrigation data for this day - show 0
+            irrigation_events.append({
+                'date': day_label,
+                'volume': 0,
+                'needed': False,
+                'count': 0
+            })
 
     # Get daily ETo/ETc/Rn history from stored daily values (last 30 days)
     daily_history = {
@@ -5918,20 +6007,20 @@ async def dashboard():
                 }}
             }});
 
-            // Irrigation History Chart
-            const irrigationEvents = {json.dumps([e['time'] for e in irrigation_events])};
+            // Irrigation History Chart - Last 10 Days with Dates
+            const irrigationDates = {json.dumps([e['date'] for e in irrigation_events])};
             const irrigationVolumes = {json.dumps([e['volume'] for e in irrigation_events])};
-            const irrigationNeeded = {json.dumps([e['needed'] for e in irrigation_events])};
+            const irrigationCounts = {json.dumps([e.get('count', 0) for e in irrigation_events])};
 
             new Chart(document.getElementById('irrigationHistoryChart').getContext('2d'), {{
                 type: 'bar',
                 data: {{
-                    labels: irrigationEvents,
+                    labels: irrigationDates,
                     datasets: [{{
-                        label: 'Irrigation Volume (L/Tree)',
+                        label: 'Daily Irrigation (L/Tree)',
                         data: irrigationVolumes,
-                        backgroundColor: irrigationNeeded.map(n => n ? 'rgba(239, 68, 68, 0.7)' : 'rgba(16, 185, 129, 0.7)'),
-                        borderColor: irrigationNeeded.map(n => n ? '#EF4444' : '#10B981'),
+                        backgroundColor: irrigationVolumes.map(v => v > 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(156, 163, 175, 0.3)'),
+                        borderColor: irrigationVolumes.map(v => v > 0 ? '#10B981' : '#9CA3AF'),
                         borderWidth: 1,
                         borderRadius: 4
                     }}]
@@ -5943,16 +6032,34 @@ async def dashboard():
                         legend: {{ display: false }},
                         tooltip: {{
                             callbacks: {{
+                                title: function(context) {{
+                                    return 'Date: ' + context[0].label;
+                                }},
                                 label: function(context) {{
-                                    const needed = irrigationNeeded[context.dataIndex];
-                                    return `${{context.parsed.y.toFixed(1)}} L/Tree (${{needed ? 'Needed' : 'Adequate'}})`;
+                                    const vol = context.parsed.y;
+                                    const count = irrigationCounts[context.dataIndex];
+                                    if (vol === 0) {{
+                                        return 'No irrigation';
+                                    }}
+                                    return `${{vol.toFixed(1)}} L/Tree (${{count}} event${{count > 1 ? 's' : ''}})`;
                                 }}
                             }}
                         }}
                     }},
                     scales: {{
-                        x: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }}, maxRotation: 45 }}, grid: {{ display: false }} }},
-                        y: {{ display: true, ticks: {{ color: '#9CA3AF', font: {{ size: 9 }} }}, grid: {{ color: 'rgba(0,0,0,0.05)' }}, title: {{ display: true, text: 'L/Tree', font: {{ size: 10 }}, color: '#9CA3AF' }} }}
+                        x: {{
+                            display: true,
+                            title: {{ display: true, text: 'Date (MM/DD)', font: {{ size: 10 }}, color: '#9CA3AF' }},
+                            ticks: {{ color: '#9CA3AF', font: {{ size: 9 }}, maxRotation: 0 }},
+                            grid: {{ display: false }}
+                        }},
+                        y: {{
+                            display: true,
+                            beginAtZero: true,
+                            ticks: {{ color: '#9CA3AF', font: {{ size: 9 }} }},
+                            grid: {{ color: 'rgba(0,0,0,0.05)' }},
+                            title: {{ display: true, text: 'L/Tree', font: {{ size: 10 }}, color: '#9CA3AF' }}
+                        }}
                     }}
                 }}
             }});
