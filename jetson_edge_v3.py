@@ -4934,6 +4934,28 @@ async def dashboard():
                             <div style="font-size: 0.7rem; color: var(--gray-400); margin-top: 4px;" data-en="Net Radiation" data-th="รังสีสุทธิ">Net Radiation</div>
                         </div>
                     </div>
+
+                    <!-- Daily ET History Chart (Last 10 Days) -->
+                    <div class="chart-card" style="margin-top: 16px;">
+                        <div class="chart-header">
+                            <span class="chart-title">📊 <span data-en="Daily ET History (Last 10 Days)" data-th="ประวัติ ET รายวัน (10 วันล่าสุด)">Daily ET History (Last 10 Days)</span></span>
+                            <div style="display: flex; gap: 12px; font-size: 0.7rem;">
+                                <span style="display: flex; align-items: center; gap: 4px;">
+                                    <span style="width: 12px; height: 3px; background: #0077B6; border-radius: 2px;"></span>
+                                    ETo
+                                </span>
+                                <span style="display: flex; align-items: center; gap: 4px;">
+                                    <span style="width: 12px; height: 3px; background: #10B981; border-radius: 2px;"></span>
+                                    ETc
+                                </span>
+                                <span style="display: flex; align-items: center; gap: 4px;">
+                                    <span style="width: 12px; height: 3px; background: #F59E0B; border-radius: 2px;"></span>
+                                    Rn
+                                </span>
+                            </div>
+                        </div>
+                        <div class="chart-container" style="height: 200px;"><canvas id="dailyETChart"></canvas></div>
+                    </div>
                 </div>
 
                 <!-- Sensor Trends Section -->
@@ -5153,6 +5175,112 @@ async def dashboard():
             new Chart(document.getElementById('pressureChart').getContext('2d'), {{
                 ...chartConfig,
                 data: {{ labels: {history_data['labels']}, datasets: [{{ data: {history_data['pressure']}, borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.1)', fill: true }}] }}
+            }});
+
+            // Daily ET History Chart (ETo, ETc, Rn) - Last 10 days
+            const dailyETLabels = {json.dumps(daily_history['labels'][-10:])};
+            const dailyEToData = {json.dumps(daily_history['eto'][-10:])};
+            const dailyETcData = {json.dumps(daily_history['etc'][-10:])};
+            const dailyRnData = {json.dumps(daily_history['rn'][-10:])};
+
+            new Chart(document.getElementById('dailyETChart').getContext('2d'), {{
+                type: 'line',
+                data: {{
+                    labels: dailyETLabels,
+                    datasets: [
+                        {{
+                            label: 'ETo (mm/day)',
+                            data: dailyEToData,
+                            borderColor: '#0077B6',
+                            backgroundColor: 'rgba(0, 119, 182, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#0077B6',
+                            borderWidth: 2
+                        }},
+                        {{
+                            label: 'ETc (mm/day)',
+                            data: dailyETcData,
+                            borderColor: '#10B981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#10B981',
+                            borderWidth: 2
+                        }},
+                        {{
+                            label: 'Rn (MJ/m²/day)',
+                            data: dailyRnData,
+                            borderColor: '#F59E0B',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#F59E0B',
+                            borderWidth: 2
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {{
+                        mode: 'index',
+                        intersect: false
+                    }},
+                    plugins: {{
+                        legend: {{
+                            display: true,
+                            position: 'bottom',
+                            labels: {{
+                                boxWidth: 12,
+                                padding: 8,
+                                font: {{ size: 10 }},
+                                usePointStyle: true
+                            }}
+                        }},
+                        tooltip: {{
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleFont: {{ size: 11 }},
+                            bodyFont: {{ size: 10 }},
+                            padding: 8,
+                            callbacks: {{
+                                label: function(context) {{
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    return `${{label}}: ${{value.toFixed(2)}}`;
+                                }}
+                            }}
+                        }}
+                    }},
+                    scales: {{
+                        x: {{
+                            display: true,
+                            ticks: {{
+                                color: '#9CA3AF',
+                                font: {{ size: 9 }},
+                                maxRotation: 45
+                            }},
+                            grid: {{ display: false }}
+                        }},
+                        y: {{
+                            display: true,
+                            ticks: {{
+                                color: '#9CA3AF',
+                                font: {{ size: 9 }}
+                            }},
+                            grid: {{ color: 'rgba(0,0,0,0.05)' }},
+                            title: {{
+                                display: true,
+                                text: 'Value',
+                                font: {{ size: 10 }},
+                                color: '#9CA3AF'
+                            }}
+                        }}
+                    }}
+                }}
             }});
 
             // Irrigation History Chart
