@@ -515,8 +515,9 @@ def load_latest_sensor_data_from_influxdb():
     """
     On startup, fetch the latest aggregated sensor data from InfluxDB
     and populate the dashboard's Live Sensor Readings with timestamp annotation.
+    Also adds the record to local_15min_records for Raw Data tab display.
     """
-    global live_sensor_metadata
+    global live_sensor_metadata, local_15min_records
 
     if not INFLUXDB_AVAILABLE:
         logger.warning("InfluxDB not available - cannot load latest sensor data")
@@ -566,6 +567,33 @@ def load_latest_sensor_data_from_influxdb():
         update_sensor_status("vpd", latest["vpd_avg_15"], True)
     if latest.get("sunshine_hours_15") is not None:
         update_sensor_status("sunshine", latest["sunshine_hours_15"], True)
+
+    # Add recovered record to local_15min_records for Raw Data tab and Live Sensor Readings
+    # Mark it as recovered so we can show "Standby" status
+    recovered_record = {
+        "timestamp": original_ts,
+        "received_at": datetime.now().isoformat(),
+        "temp_min_15": latest.get("temp_min_15"),
+        "temp_max_15": latest.get("temp_max_15"),
+        "temp_avg_15": temp_avg,
+        "rh_avg_15": latest.get("rh_avg_15"),
+        "pressure_avg_15": latest.get("pressure_avg_15"),
+        "wind_avg_15": latest.get("wind_avg_15"),
+        "wind_max_15": latest.get("wind_max_15"),
+        "solar_avg_15": latest.get("solar_avg_15"),
+        "sunshine_hours_15": latest.get("sunshine_hours_15"),
+        "rain_mm_15": latest.get("rain_mm_15"),
+        "vpd_avg_15": latest.get("vpd_avg_15"),
+        "recovered": True  # Flag to indicate this was recovered from InfluxDB
+    }
+
+    # Check if this record already exists (by timestamp) to avoid duplicates
+    existing_timestamps = [r.get("timestamp") for r in local_15min_records]
+    if original_ts not in existing_timestamps:
+        local_15min_records.append(recovered_record)
+        logger.info(f"Added recovered record to local_15min_records (timestamp: {original_ts})")
+    else:
+        logger.info(f"Record already exists in local_15min_records, skipping duplicate")
 
     # Update metadata for dashboard display
     live_sensor_metadata = {
