@@ -529,20 +529,17 @@ def load_latest_sensor_data_from_influxdb():
         logger.info("No recent sensor data found in InfluxDB")
         return False
 
-    # Parse the original timestamp and convert to local time (UTC+7 for Thailand)
+    # Parse the original timestamp - ESP32 already sends Thailand time
+    # InfluxDB may add timezone markers but the time value is already local
     original_ts = latest.get("timestamp", "")
     try:
-        # Parse ISO format timestamp
-        if "+" in original_ts or original_ts.endswith("Z"):
-            # Has timezone info - InfluxDB returns UTC
-            ts_dt = datetime.fromisoformat(original_ts.replace("Z", "+00:00"))
-            # Convert UTC to local time (UTC+7)
-            local_offset = timedelta(hours=7)
-            ts_local = ts_dt.replace(tzinfo=None) + local_offset
-            formatted_ts = ts_local.strftime("%Y-%m-%d %H:%M")
+        # Parse ISO format timestamp - strip timezone info as ESP32 sends Thailand time
+        if 'T' in str(original_ts):
+            dt = datetime.fromisoformat(str(original_ts).replace('Z', '').split('+')[0])
         else:
-            ts_dt = datetime.fromisoformat(original_ts)
-            formatted_ts = ts_dt.strftime("%Y-%m-%d %H:%M")
+            dt = datetime.fromisoformat(original_ts)
+        # NO timezone conversion needed - ESP32 already sends Thailand time
+        formatted_ts = dt.strftime("%Y-%m-%d %H:%M")
     except:
         formatted_ts = original_ts[:16] if original_ts else "Unknown"
 
@@ -4009,13 +4006,11 @@ async def dashboard():
         if timestamp:
             try:
                 # Handle different timestamp formats
+                # ESP32 already sends Thailand time, so NO conversion needed
                 if 'T' in str(timestamp):
                     dt = datetime.fromisoformat(str(timestamp).replace('Z', '').split('+')[0])
                 else:
                     dt = datetime.strptime(str(timestamp), "%Y-%m-%d %H:%M:%S")
-                # Convert UTC to Thailand time (UTC+7) for display
-                if str(timestamp).endswith('Z') or '+00:00' in str(timestamp):
-                    dt = dt + timedelta(hours=7)
                 formatted_time = dt.strftime('%H:%M')
             except:
                 formatted_time = str(timestamp)[-8:-3] if len(str(timestamp)) > 8 else str(timestamp)
@@ -4079,16 +4074,13 @@ async def dashboard():
         current_solar_wm2 = round(latest_record.get("solar_avg_15") or 0, 2)
         current_rainfall = round(latest_record.get("rain_mm_15") or 0, 2)
 
-        # Get timestamp and convert UTC to Thailand time (UTC+7)
+        # Get timestamp - ESP32 already sends Thailand time, no conversion needed
         ts = latest_record.get("timestamp", latest_record.get("received_at", ""))
         try:
             if 'T' in str(ts):
                 dt = datetime.fromisoformat(str(ts).replace('Z', '').split('+')[0])
             else:
                 dt = datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S")
-            # Convert UTC to Thailand time (UTC+7)
-            if str(ts).endswith("Z") or "+00:00" in str(ts):
-                dt = dt + timedelta(hours=7)
             live_data_timestamp = dt.strftime("%Y-%m-%d %H:%M")
         except:
             live_data_timestamp = str(ts)[:16]
