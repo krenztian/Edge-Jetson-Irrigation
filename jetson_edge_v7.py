@@ -4952,20 +4952,20 @@ async def dashboard():
             .location-display svg {{ width: 12px; height: 12px; flex-shrink: 0; color: var(--highlight); }}
             .location-text {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
-            /* Sidebar */
+            /* Sidebar - Optimized for 1280x800 display */
             .sidebar {{
-                width: 240px;
+                width: 200px;
                 background: var(--primary);
-                padding: 20px 0;
+                padding: 16px 0;
                 position: fixed;
                 height: 100vh;
                 overflow-y: auto;
                 z-index: 100;
             }}
             .sidebar-logo {{
-                padding: 0 20px 24px;
+                padding: 0 16px 16px;
                 border-bottom: 1px solid rgba(255,255,255,0.1);
-                margin-bottom: 16px;
+                margin-bottom: 12px;
             }}
             .logo-container {{
                 display: flex;
@@ -5019,42 +5019,42 @@ async def dashboard():
 
             /* Farm Info Card in Sidebar */
             .farm-info {{
-                margin: 20px 12px;
-                padding: 14px;
+                margin: 12px 10px;
+                padding: 10px;
                 background: rgba(255,255,255,0.1);
                 border-radius: var(--radius);
                 color: var(--white);
             }}
-            .farm-name {{ font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }}
-            .farm-name svg {{ width: 16px; height: 16px; color: var(--accent); }}
-            .farm-stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
-            .farm-stat {{ text-align: center; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; }}
-            .farm-stat-value {{ font-size: 1.1rem; font-weight: 700; color: var(--white); }}
-            .farm-stat-label {{ font-size: 0.65rem; color: rgba(255,255,255,0.6); margin-top: 2px; }}
+            .farm-name {{ font-size: 0.75rem; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }}
+            .farm-name svg {{ width: 14px; height: 14px; color: var(--accent); }}
+            .farm-stats {{ display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }}
+            .farm-stat {{ text-align: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 6px; }}
+            .farm-stat-value {{ font-size: 1rem; font-weight: 700; color: var(--white); }}
+            .farm-stat-label {{ font-size: 0.6rem; color: rgba(255,255,255,0.6); margin-top: 2px; }}
 
             /* Sidebar AI Climate Analysis */
             .sidebar-climate {{
-                margin: 16px 12px;
-                padding: 12px;
+                margin: 10px 10px;
+                padding: 10px;
                 background: rgba(255,255,255,0.08);
                 border-radius: var(--radius);
             }}
             .sidebar-climate-title {{
-                font-size: 0.75rem;
+                font-size: 0.7rem;
                 font-weight: 600;
                 color: rgba(255,255,255,0.8);
-                margin-bottom: 8px;
+                margin-bottom: 6px;
                 display: flex;
                 align-items: center;
-                gap: 6px;
+                gap: 5px;
             }}
             .sidebar-climate-title svg {{ width: 14px; height: 14px; color: var(--highlight); }}
 
-            /* Main Content */
+            /* Main Content - Optimized for 1280x800 display */
             .main-content {{
                 flex: 1;
-                margin-left: 240px;
-                padding: 24px 32px;
+                margin-left: 200px;
+                padding: 16px 20px;
                 background: var(--gray-50);
             }}
 
@@ -5063,19 +5063,19 @@ async def dashboard():
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 24px;
-                padding-bottom: 16px;
+                margin-bottom: 16px;
+                padding-bottom: 12px;
                 border-bottom: 1px solid var(--gray-200);
                 flex-wrap: wrap;
-                gap: 12px;
+                gap: 10px;
             }}
             .top-bar-left {{
                 display: flex;
                 align-items: center;
-                gap: 16px;
+                gap: 12px;
             }}
             .page-title {{
-                font-size: 1.5rem;
+                font-size: 1.25rem;
                 font-weight: 700;
                 color: var(--primary);
                 display: flex;
@@ -5370,18 +5370,18 @@ async def dashboard():
             .countdown-time {{ font-size: 2rem; font-weight: 700; }}
             .countdown-label {{ font-size: 0.8rem; opacity: 0.9; }}
 
-            /* Sensor Status Section */
-            .sensors-section {{ margin-bottom: 24px; }}
+            /* Sensor Status Section - Optimized for 1280x800 display */
+            .sensors-section {{ margin-bottom: 20px; }}
             .sensor-grid {{
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 12px;
+                grid-template-columns: repeat(8, 1fr);  /* Force 8 columns for 8 sensors */
+                gap: 8px;
             }}
             .sensor-card {{
                 background: var(--white);
                 border-radius: var(--radius);
                 border: 1px solid var(--gray-200);
-                padding: 16px;
+                padding: 10px;
                 transition: all 0.2s;
                 position: relative;
                 overflow: hidden;
@@ -5408,43 +5408,43 @@ async def dashboard():
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                margin-bottom: 10px;
+                margin-bottom: 6px;
             }}
             .sensor-icon {{
-                width: 36px;
-                height: 36px;
-                border-radius: 8px;
+                width: 28px;
+                height: 28px;
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }}
-            .sensor-icon svg {{ width: 20px; height: 20px; }}
+            .sensor-icon svg {{ width: 16px; height: 16px; }}
             .sensor-status {{
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                font-size: 0.65rem;
+                gap: 3px;
+                font-size: 0.55rem;
                 font-weight: 500;
             }}
             .sensor-status-dot {{
-                width: 8px;
-                height: 8px;
+                width: 6px;
+                height: 6px;
                 border-radius: 50%;
             }}
-            .sensor-status.online .sensor-status-dot {{ background: var(--accent); box-shadow: 0 0 6px var(--accent); }}
+            .sensor-status.online .sensor-status-dot {{ background: var(--accent); box-shadow: 0 0 4px var(--accent); }}
             .sensor-status.online {{ color: var(--accent); }}
             .sensor-status.standby .sensor-status-dot {{ background: var(--highlight); }}
             .sensor-status.standby {{ color: var(--highlight); }}
             .sensor-status.offline .sensor-status-dot {{ background: var(--danger); }}
             .sensor-status.offline {{ color: var(--danger); }}
-            .sensor-name {{ font-size: 0.75rem; color: var(--neutral); margin-bottom: 4px; }}
-            .sensor-value {{ font-size: 1.5rem; font-weight: 700; color: var(--primary); }}
-            .sensor-unit {{ font-size: 0.8rem; color: var(--neutral); font-weight: 400; }}
+            .sensor-name {{ font-size: 0.65rem; color: var(--neutral); margin-bottom: 2px; }}
+            .sensor-value {{ font-size: 1.1rem; font-weight: 700; color: var(--primary); }}
+            .sensor-unit {{ font-size: 0.65rem; color: var(--neutral); font-weight: 400; }}
             .sensor-bar {{
-                height: 4px;
+                height: 3px;
                 background: var(--gray-200);
                 border-radius: 2px;
-                margin-top: 10px;
+                margin-top: 6px;
                 overflow: hidden;
             }}
             .sensor-bar-fill {{
@@ -5520,7 +5520,7 @@ async def dashboard():
             .daily-label {{ font-size: 0.8rem; color: var(--gray-500); }}
             .daily-chart {{ height: 80px; margin-top: 12px; }}
 
-            /* Irrigation History Section */
+            /* Irrigation Trend Section */
             .irrigation-section {{ margin-bottom: 24px; }}
             .irrigation-chart-card {{
                 background: var(--white);
@@ -5819,11 +5819,11 @@ async def dashboard():
                     </div>
                 </div>
 
-                <!-- Irrigation History Section (Moved here - below Live Sensor Readings) -->
+                <!-- Irrigation Trend Section (Moved here - below Live Sensor Readings) -->
                 <div class="irrigation-section">
                     <div class="section-header">
                         <div class="section-icon orange"><i data-lucide="droplet"></i></div>
-                        <span class="section-title" data-en="Irrigation History" data-th="ประวัติการให้น้ำ">Irrigation History</span>
+                        <span class="section-title" data-en="Irrigation Trend" data-th="แนวโน้มการให้น้ำ">Irrigation Trend</span>
                         <span style="margin-left: auto; font-size: 0.75rem; color: var(--neutral);">
                             {datetime.now().strftime("%Y-%m-%d")} •
                             {f'<span style="color: var(--accent);">✓ {len([h for h in irrigation_history if h.get("irrigation_volume", 0) > 0])} irrigations</span>' if any(h.get("irrigation_volume", 0) > 0 for h in irrigation_history) else '<span style="color: var(--neutral);">No irrigation today</span>'}
@@ -5952,7 +5952,7 @@ async def dashboard():
                     online: "Online",
                     offline: "Offline",
                     recentTrends: "Recent Trends",
-                    irrigationHistory: "Irrigation History",
+                    irrigationHistory: "Irrigation Trend",
                     autoRefresh: "Auto-refresh 30s",
                     day: "Day",
                     open: "OPEN",
@@ -5981,7 +5981,7 @@ async def dashboard():
                     online: "ออนไลน์",
                     offline: "ออฟไลน์",
                     recentTrends: "แนวโน้มล่าสุด",
-                    irrigationHistory: "ประวัติการให้น้ำ",
+                    irrigationHistory: "แนวโน้มการให้น้ำ",
                     autoRefresh: "รีเฟรชอัตโนมัติ 30 วินาที",
                     day: "วันที่",
                     open: "เปิด",
@@ -6339,7 +6339,7 @@ async def dashboard():
                 }}
             }});
 
-            // Irrigation History Chart - Last 10 Days with Dates
+            // Irrigation Trend Chart - Last 10 Days with Dates
             const irrigationDates = {json.dumps([e['date'] for e in irrigation_events])};
             const irrigationVolumes = {json.dumps([e['volume'] for e in irrigation_events])};
             const irrigationCounts = {json.dumps([e.get('count', 0) for e in irrigation_events])};
