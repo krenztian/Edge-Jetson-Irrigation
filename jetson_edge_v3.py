@@ -334,6 +334,7 @@ def load_all_state():
     load_15min_records()
     load_daily_prediction()
     load_settings_history()
+    load_daily_values_history()
     logger.info("All state loaded from disk")
 
 # Manual pump session tracking
@@ -738,6 +739,64 @@ class InfluxDBRecovery:
             })
             return []
 
+    def query_15min_records_from_6am_today(self):
+        """
+        Query 15-minute aggregate records from 6:00 AM today until now.
+        This is the new "day" boundary for the irrigation system.
+        """
+        if not self.query_api:
+            if not self.connect():
+                return []
+
+        try:
+            # Calculate 6:00 AM today in UTC (adjust for local timezone)
+            now = datetime.now()
+            today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+
+            # If it's before 6 AM, use yesterday's 6 AM
+            if now < today_6am:
+                today_6am = today_6am - timedelta(days=1)
+
+            # Format for InfluxDB query (RFC3339)
+            start_time = today_6am.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            query = f'''
+            from(bucket: "{INFLUXDB_CONFIG['bucket']}")
+                |> range(start: {start_time})
+                |> filter(fn: (r) => r["_measurement"] == "weather_15min")
+                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+                |> sort(columns: ["_time"], desc: false)
+            '''
+
+            logger.info(f"Querying InfluxDB for 15-min records from {start_time} to now...")
+            tables = self.query_api.query(query, org=INFLUXDB_CONFIG["org"])
+
+            records = []
+            for table in tables:
+                for record in table.records:
+                    records.append({
+                        "timestamp": record.get_time().isoformat(),
+                        "temp_min_15": record.values.get("temp_min_15"),
+                        "temp_max_15": record.values.get("temp_max_15"),
+                        "temp_avg_15": record.values.get("temp_avg_15"),
+                        "rh_avg_15": record.values.get("rh_avg_15"),
+                        "pressure_avg_15": record.values.get("pressure_avg_15"),
+                        "wind_avg_15": record.values.get("wind_avg_15"),
+                        "wind_max_15": record.values.get("wind_max_15"),
+                        "solar_avg_15": record.values.get("solar_avg_15"),
+                        "sunshine_min_15": record.values.get("sunshine_min_15"),
+                        "rain_mm_15": record.values.get("rain_mm_15"),
+                        "vpd_avg_15": record.values.get("vpd_avg_15"),
+                        "device": record.values.get("device", "ESP32")
+                    })
+
+            logger.info(f"Retrieved {len(records)} 15-min records from 6:00 AM today")
+            return records
+
+        except Exception as e:
+            logger.error(f"Failed to query 15-min records from 6AM: {e}")
+            return []
+
     def close(self):
         if self.client:
             self.client.close()
@@ -822,6 +881,113 @@ daily_prediction_result = {
     "irrigation_recommendation": None,
     "prediction_timestamp": None
 }
+
+# =========================
+# Daily ETo/ETc/Rn History (for dashboard graph)
+# Stores last 30 days of daily values
+# =========================
+daily_values_history = deque(maxlen=30)
+
+def save_daily_values_history():
+    """Save daily values history to file"""
+    try:
+        ensure_directories()
+        history_file = DATA_DIR / "daily_values_history.json"
+        with open(history_file, "w") as f:
+            json.dump(list(daily_values_history), f, indent=2, default=str)
+        logger.debug(f"Saved {len(daily_values_history)} daily values to history")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save daily values history: {e}")
+        return False
+
+def load_daily_values_history():
+    """Load daily values history from file"""
+    global daily_values_history
+    try:
+        history_file = DATA_DIR / "daily_values_history.json"
+        if history_file.exists():
+            with open(history_file, "r") as f:
+                history_list = json.load(f)
+                daily_values_history.clear()
+                for entry in history_list:
+                    daily_values_history.append(entry)
+            logger.info(f"Loaded {len(daily_values_history)} daily values from history")
+            return True
+    except Exception as e:
+        logger.error(f"Failed to load daily values history: {e}")
+    return False
+
+def add_daily_value_to_history(eto: float, etc: float, rn: float, prediction_date: str, data_quality: str):
+    """Add a daily prediction to the history for graphing"""
+    entry = {
+        "date": prediction_date,
+        "eto_mm_day": round(eto, 3),
+        "etc_mm_day": round(etc, 3),
+        "rn_mj_m2_day": round(rn, 3),
+        "data_quality": data_quality,
+        "added_at": datetime.now().isoformat()
+    }
+    # Check if we already have an entry for this date
+    for i, existing in enumerate(daily_values_history):
+        if existing.get("date") == prediction_date:
+            # Update existing entry
+            daily_values_history[i] = entry
+            logger.info(f"Updated daily history for {prediction_date}")
+            save_daily_values_history()
+            return
+    # Add new entry
+    daily_values_history.append(entry)
+    logger.info(f"Added daily history for {prediction_date}: ETo={eto:.3f}, ETc={etc:.3f}, Rn={rn:.2f}")
+    save_daily_values_history()
+
+def clear_previous_day_raw_data():
+    """
+    Clear raw 15-min records from before 6:00 AM today.
+    Called at 6:01 AM after daily prediction is complete.
+    Keeps only today's data (from 6:00 AM onwards).
+    """
+    global local_15min_records
+
+    now = datetime.now()
+    today_6am = now.replace(hour=6, minute=0, second=0, microsecond=0)
+
+    # If before 6 AM, use yesterday's 6 AM as cutoff
+    if now < today_6am:
+        today_6am = today_6am - timedelta(days=1)
+
+    old_count = len(local_15min_records)
+    records_to_keep = []
+
+    for record in local_15min_records:
+        try:
+            ts_str = record.get("timestamp") or record.get("received_at")
+            if ts_str:
+                if "T" in ts_str:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00").replace("+00:00", ""))
+                else:
+                    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+
+                # Keep only records from 6:00 AM today onwards
+                if ts >= today_6am:
+                    records_to_keep.append(record)
+        except Exception as e:
+            logger.debug(f"Error parsing timestamp during cleanup: {e}")
+            # Keep record if we can't parse timestamp
+            records_to_keep.append(record)
+
+    # Replace with filtered records
+    local_15min_records.clear()
+    for record in records_to_keep:
+        local_15min_records.append(record)
+
+    removed_count = old_count - len(local_15min_records)
+    logger.info(f"[CLEANUP] Cleared {removed_count} old records. Kept {len(local_15min_records)} records from today (since 6:00 AM)")
+
+    # Save the cleaned records
+    save_15min_records()
+
+    return removed_count
 
 # =========================
 # Daily Aggregation Function (6:00 AM)
@@ -1045,7 +1211,7 @@ def daily_scheduler():
         logger.info("=" * 60)
 
         # STEP 1: Update growth day FIRST
-        logger.info("[STEP 1/2] Updating growth day...")
+        logger.info("[STEP 1/4] Updating growth day...")
         try:
             old_day = growth_stage_config["current_day"]
             old_stage = irrigation_config.get("crop_growth_stage")
@@ -1075,7 +1241,7 @@ def daily_scheduler():
             logger.error(f"Growth day update error: {e}")
 
         # STEP 2: Run daily ETo prediction
-        logger.info("[STEP 2/2] Running daily ETo prediction...")
+        logger.info("[STEP 2/4] Running daily ETo prediction...")
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -1084,10 +1250,31 @@ def daily_scheduler():
 
             if result:
                 logger.info("Daily prediction completed successfully")
+
+                # STEP 3: Save daily values to history for dashboard graph
+                logger.info("[STEP 3/4] Saving daily values to history...")
+                try:
+                    eto = daily_prediction_result.get("eto_prediction", {}).get("eto_mm_day", 0)
+                    etc = daily_prediction_result.get("irrigation_recommendation", {}).get("etc_mm_day", 0)
+                    rn = daily_prediction_result.get("eto_prediction", {}).get("estimated_rad", 0)
+                    pred_date = daily_prediction_result.get("last_prediction_date", "")
+                    data_quality = daily_prediction_result.get("data_quality", "unknown")
+
+                    add_daily_value_to_history(eto, etc, rn, pred_date, data_quality)
+                except Exception as e:
+                    logger.error(f"Failed to save daily values to history: {e}")
             else:
                 logger.warning("Daily prediction returned no result")
         except Exception as e:
             logger.error(f"Daily prediction error: {e}")
+
+        # STEP 4: Clear previous day's raw data (keep only from 6 AM today)
+        logger.info("[STEP 4/4] Clearing previous day's raw data...")
+        try:
+            removed = clear_previous_day_raw_data()
+            logger.info(f"Cleared {removed} old raw records")
+        except Exception as e:
+            logger.error(f"Failed to clear old raw data: {e}")
 
         logger.info("=" * 60)
         logger.info("=== 6:01 AM - DAILY TASKS COMPLETE ===")
@@ -2906,11 +3093,17 @@ async def force_reload_all():
 # =========================
 @app.get("/raw-data", response_class=HTMLResponse)
 async def raw_sensor_data_page():
-    """Display stored 15-minute aggregate records"""
+    """Display stored 15-minute aggregate records - sorted by timestamp (latest first)"""
 
-    # Get local 15-min records
+    # Get local 15-min records and sort by timestamp (latest first)
     records = list(local_15min_records)
-    records.reverse()  # Most recent first
+
+    # Sort by timestamp descending (latest first, earliest last)
+    def get_timestamp(record):
+        ts = record.get("timestamp") or record.get("received_at") or ""
+        return ts
+
+    records.sort(key=get_timestamp, reverse=True)  # Latest first (top), earliest last (bottom)
 
     # Build table rows
     table_rows = ""
@@ -3759,16 +3952,38 @@ async def dashboard():
             except:
                 pass
 
-    # Get daily ETo/ETc history from daily_prediction_result history (if available)
+    # Get daily ETo/ETc/Rn history from stored daily values (last 30 days)
     daily_history = {
         'labels': [],
         'eto': [],
         'etc': [],
         'rn': []
     }
-    # For now, use current values as placeholder - in production, this would come from stored daily data
-    if daily_prediction_result.get("eto_prediction"):
-        daily_history['labels'].append(datetime.now().strftime('%m/%d'))
+
+    # Load from daily_values_history (stored at 6:01 AM each day)
+    for entry in daily_values_history:
+        if entry.get("date"):
+            # Format date as MM/DD
+            try:
+                d = datetime.strptime(entry["date"], "%Y-%m-%d")
+                daily_history['labels'].append(d.strftime('%m/%d'))
+            except:
+                daily_history['labels'].append(entry["date"][-5:])  # Fallback
+            daily_history['eto'].append(round(entry.get("eto_mm_day", 0), 2))
+            daily_history['etc'].append(round(entry.get("etc_mm_day", 0), 2))
+            daily_history['rn'].append(round(entry.get("rn_mj_m2_day", 0), 2))
+
+    # If no history yet but we have today's prediction, add it
+    if not daily_history['labels'] and daily_prediction_result.get("eto_prediction"):
+        pred_date = daily_prediction_result.get("last_prediction_date", "")
+        if pred_date:
+            try:
+                d = datetime.strptime(pred_date, "%Y-%m-%d")
+                daily_history['labels'].append(d.strftime('%m/%d'))
+            except:
+                daily_history['labels'].append(pred_date[-5:])
+        else:
+            daily_history['labels'].append(datetime.now().strftime('%m/%d'))
         daily_history['eto'].append(round(daily_prediction_result["eto_prediction"].get("eto_mm_day", 0), 2))
         daily_history['etc'].append(round(latest_irrigation.get("etc_mm_day", 0) if latest_irrigation else 0, 2))
         daily_history['rn'].append(round(daily_prediction_result["eto_prediction"].get("estimated_rad", 0), 2))
